@@ -103,7 +103,7 @@ export default function TransactionPage({ params }: PageProps) {
           <CardContent className="space-y-4">
             <div>
               <div className="text-sm text-muted-foreground mb-1">Value</div>
-              <div className="text-2xl font-bold">{transaction.value} qETH</div>
+              <div className="text-2xl font-bold">{transaction.value} QRDX</div>
               <div className="text-sm text-muted-foreground">
                 ≈ {formatUSD(parseFloat(transaction.value) * 3500)}
               </div>
@@ -112,7 +112,7 @@ export default function TransactionPage({ params }: PageProps) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="text-sm text-muted-foreground mb-1">Transaction Fee</div>
-                <div className="font-medium">{transaction.fee} qETH</div>
+                <div className="font-medium">{transaction.fee} QRDX</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground mb-1">Gas Price</div>

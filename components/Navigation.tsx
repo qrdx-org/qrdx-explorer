@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { ThemeToggle } from './theme-toggle'
+import NetworkSwitcher from './NetworkSwitcher'
 import { Search, Database, Activity, FileText, Blocks } from 'lucide-react'
 
 export default function Navigation() {
@@ -13,7 +14,7 @@ export default function Navigation() {
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
             <Image src="/logo.png" alt="QRDX" width={32} height={32} className="rounded-lg" />
-            <span className="text-xl font-bold gradient-text">QRDX Explorer</span>
+            <span className="text-xl font-bold">QRDX Explorer</span>
           </Link>
 
           {/* Navigation Links */}
@@ -36,8 +37,9 @@ export default function Navigation() {
             </Link>
           </div>
 
-          {/* Theme Toggle */}
-          <div className="flex items-center">
+          {/* Right side: Network Switcher + Theme Toggle */}
+          <div className="flex items-center gap-2">
+            <NetworkSwitcher />
             <ThemeToggle />
           </div>
         </div>

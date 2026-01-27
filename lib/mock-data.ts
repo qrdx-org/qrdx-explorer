@@ -22,11 +22,11 @@ export function generateMockAddress(address: string): Address {
 
 export function generateMockTokens(): Token[] {
   const tokens = [
-    { symbol: 'qETH', name: 'Quantum ETH', logo: '/logo.png' },
-    { symbol: 'qBTC', name: 'Quantum BTC', logo: '/logo.png' },
-    { symbol: 'QRDX', name: 'QRDX Token', logo: '/logo.png' },
-    { symbol: 'qUSDT', name: 'Quantum USDT', logo: '/logo.png' },
-    { symbol: 'qUSDC', name: 'Quantum USDC', logo: '/logo.png' },
+    { symbol: 'USDT', name: 'Tether USD', logo: '/logo.png', type: 'QRC-20' },
+    { symbol: 'USDC', name: 'USD Coin', logo: '/logo.png', type: 'QRC-20' },
+    { symbol: 'WETH', name: 'Wrapped Ether', logo: '/logo.png', type: 'QRC-20' },
+    { symbol: 'WBTC', name: 'Wrapped Bitcoin', logo: '/logo.png', type: 'QRC-20' },
+    { symbol: 'DAI', name: 'Dai Stablecoin', logo: '/logo.png', type: 'QRC-20' },
   ]
 
   return tokens.slice(0, Math.floor(Math.random() * 4) + 2).map(token => {
@@ -42,13 +42,14 @@ export function generateMockTokens(): Token[] {
       decimals: 18,
       usdValue,
       logo: token.logo,
-      percentage: 0 // Will be calculated
+      percentage: 0, // Will be calculated
+      type: token.type,
     }
   }).map(token => {
-    const total = tokens.reduce((sum, t) => sum + (t as any).usdValue, 0)
+    const total = tokens.reduce((sum, t) => sum + (t as any).usdValue || 0, 0)
     return {
       ...token,
-      percentage: (token.usdValue / total) * 100
+      percentage: total > 0 ? (token.usdValue / total) * 100 : 0
     }
   })
 }

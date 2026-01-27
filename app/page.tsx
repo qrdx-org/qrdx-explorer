@@ -37,7 +37,7 @@ export default function Home() {
         <div className="container mx-auto px-4 py-16 relative">
           <div className="text-center mb-8">
             <h1 className="text-5xl font-bold mb-4">
-              <span className="gradient-text">QRDX Explorer</span>
+              QRDX Explorer
             </h1>
             <p className="text-xl text-muted-foreground mb-8">
               Explore the quantum-resistant blockchain with confidence
@@ -218,7 +218,7 @@ export default function Home() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-medium">{(Math.random() * 5).toFixed(3)} qETH</div>
+                        <div className="text-sm font-medium">{(Math.random() * 5).toFixed(3)} QRDX</div>
                         <div className="text-xs text-muted-foreground">Transfer</div>
                       </div>
                     </Link>

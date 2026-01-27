@@ -23,6 +23,7 @@ export interface Token {
   usdValue: number
   logo?: string
   percentage: number
+  type: 'QRC-20' | 'QRC-721' | 'QRC-1155'
 }
 
 export interface Transaction {
