@@ -18,17 +18,23 @@ export default function AddressAvatar({
   className = ''
 }: AddressAvatarProps) {
   const [identiconUrl, setIdenticonUrl] = useState<string>('')
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    if (!imageUrl && typeof window !== 'undefined') {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (mounted && !imageUrl) {
       const url = generateIdenticon(address, size)
-      setIdenticonUrl(url)
+      if (url) {
+        setIdenticonUrl(url)
+      }
     }
-  }, [address, size, imageUrl])
+  }, [address, size, imageUrl, mounted])
 
-  const src = imageUrl || identiconUrl
-
-  if (!src) {
+  // Show placeholder during SSR or while loading
+  if (!mounted || (!imageUrl && !identiconUrl)) {
     return (
       <div
         className={`rounded-lg bg-muted ${className}`}
@@ -36,6 +42,8 @@ export default function AddressAvatar({
       />
     )
   }
+
+  const src = imageUrl || identiconUrl
 
   return (
     <Image
