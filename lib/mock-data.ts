@@ -43,7 +43,7 @@ export function generateMockTokens(): Token[] {
       usdValue,
       logo: token.logo,
       percentage: 0, // Will be calculated
-      type: token.type,
+      type: token.type as 'QRC-20' | 'QRC-721' | 'QRC-1155',
     }
   }).map(token => {
     const total = tokens.reduce((sum, t) => sum + (t as any).usdValue || 0, 0)

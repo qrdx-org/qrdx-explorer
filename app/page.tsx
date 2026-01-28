@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Search, TrendingUp, Database, Activity, Zap, Shield, Blocks, ArrowUpRight, ArrowDownLeft } from 'lucide-react'
@@ -8,10 +8,21 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { formatTimestamp, formatAddress } from '@/lib/mock-data'
+import { updateUrlWithNetwork, getCurrentNetworkConfig, type NetworkType } from '@/lib/network-utils'
 
 export default function Home() {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
+  const [currentNetwork, setCurrentNetwork] = useState<NetworkType>('mainnet')
+
+  // Update URL with network parameters and get current network
+  useEffect(() => {
+    updateUrlWithNetwork()
+    const config = getCurrentNetworkConfig()
+    if (config) {
+      setCurrentNetwork(config.type)
+    }
+  }, [])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -36,9 +47,21 @@ export default function Home() {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-accent/5 to-background" />
         <div className="container mx-auto px-4 py-16 relative">
           <div className="text-center mb-8">
-            <h1 className="text-5xl font-bold mb-4">
-              QRDX Explorer
-            </h1>
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <h1 className="text-5xl font-bold">
+                QRDX Explorer
+              </h1>
+              {currentNetwork === 'testnet' && (
+                <div className="px-3 py-1.5 text-sm rounded-full bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30">
+                  Testnet Mode
+                </div>
+              )}
+              {currentNetwork === 'local' && (
+                <div className="px-3 py-1.5 text-sm rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-400 border border-blue-500/30">
+                  Local Mode
+                </div>
+              )}
+            </div>
             <p className="text-xl text-muted-foreground mb-8">
               Explore the quantum-resistant blockchain with confidence
             </p>

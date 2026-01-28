@@ -1,3 +1,28 @@
+// Re-export API types from api-client for convenience
+export type {
+  AddressInfoResponse,
+  TransactionResponse,
+  TransactionLog,
+  BlockResponse,
+  StatusResponse,
+  PendingTransactionsResponse,
+  TokenInfo,
+  AddressToken,
+  AddressTokensResponse,
+} from './api-client'
+
+// Re-export token calculation types
+export type {
+  TokenPosition,
+  TokenHolding,
+} from './token-positions'
+
+// Re-export pricing types
+export type {
+  TokenPrice,
+} from './pricing-api'
+
+// Legacy types for backward compatibility
 export interface Address {
   address: string
   balance: string

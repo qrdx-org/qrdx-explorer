@@ -1,0 +1,251 @@
+{
+  "addresses": {
+    "0x0000000000000000000000000000000000000001": {
+      "name": "Garbage Collector",
+      "description": "Automated garbage collection wallet that burns unclaimed tokens and fees",
+      "image": "/images/wallets/garbage-collector.png",
+      "badges": [
+        {
+          "text": "System Wallet",
+          "color": "gray",
+          "bgColor": "bg-gray-500/20",
+          "textColor": "text-gray-700 dark:text-gray-400",
+          "borderColor": "border-gray-500/30"
+        },
+        {
+          "text": "Burner",
+          "color": "red",
+          "bgColor": "bg-red-500/20",
+          "textColor": "text-red-700 dark:text-red-400",
+          "borderColor": "border-red-500/30"
+        }
+      ],
+      "category": "system",
+      "verified": true,
+      "featured": false
+    },
+    "0x0000000000000000000000000000000000000002": {
+      "name": "Community Grant Wallet",
+      "description": "Distributes grants to community projects and ecosystem development initiatives",
+      "image": "/images/wallets/community-grants.png",
+      "badges": [
+        {
+          "text": "Official",
+          "color": "primary",
+          "bgColor": "bg-primary/20",
+          "textColor": "text-primary",
+          "borderColor": "border-primary/30"
+        },
+        {
+          "text": "Community",
+          "color": "green",
+          "bgColor": "bg-green-500/20",
+          "textColor": "text-green-700 dark:text-green-400",
+          "borderColor": "border-green-500/30"
+        }
+      ],
+      "category": "treasury",
+      "verified": true,
+      "featured": true
+    },
+    "0x0000000000000000000000000000000000000003": {
+      "name": "Developer Fund",
+      "description": "Core development team funding wallet for protocol maintenance and improvements",
+      "image": "/images/wallets/developer-fund.png",
+      "badges": [
+        {
+          "text": "Official",
+          "color": "primary",
+          "bgColor": "bg-primary/20",
+          "textColor": "text-primary",
+          "borderColor": "border-primary/30"
+        },
+        {
+          "text": "Development",
+          "color": "blue",
+          "bgColor": "bg-blue-500/20",
+          "textColor": "text-blue-700 dark:text-blue-400",
+          "borderColor": "border-blue-500/30"
+        }
+      ],
+      "category": "treasury",
+      "verified": true,
+      "featured": true
+    },
+    "0x0000000000000000000000000000000000000004": {
+      "name": "Ecosystem Fund",
+      "description": "Strategic investments in projects building on the QRDX network",
+      "image": "/images/wallets/ecosystem-fund.png",
+      "badges": [
+        {
+          "text": "Official",
+          "color": "primary",
+          "bgColor": "bg-primary/20",
+          "textColor": "text-primary",
+          "borderColor": "border-primary/30"
+        },
+        {
+          "text": "Investment",
+          "color": "purple",
+          "bgColor": "bg-purple-500/20",
+          "textColor": "text-purple-700 dark:text-purple-400",
+          "borderColor": "border-purple-500/30"
+        }
+      ],
+      "category": "treasury",
+      "verified": true,
+      "featured": true
+    },
+    "0xPQ6EF1ca0bE624B5F734ba579c88921082415f82E5dEaf65F4086c29148F3e538e": {
+      "name": "Staking Rewards Pool",
+      "description": "Distributes staking rewards to network validators and delegators",
+      "image": "/images/wallets/staking-rewards.png",
+      "badges": [
+        {
+          "text": "System Wallet",
+          "color": "gray",
+          "bgColor": "bg-gray-500/20",
+          "textColor": "text-gray-700 dark:text-gray-400",
+          "borderColor": "border-gray-500/30"
+        },
+        {
+          "text": "Rewards",
+          "color": "yellow",
+          "bgColor": "bg-yellow-500/20",
+          "textColor": "text-yellow-700 dark:text-yellow-400",
+          "borderColor": "border-yellow-500/30"
+        }
+      ],
+      "category": "system",
+      "verified": true,
+      "featured": false
+    },
+    "0x0000000000000000000000000000000000000006": {
+      "name": "Marketing & Partnerships",
+      "description": "Funds marketing initiatives, partnerships, and ecosystem growth campaigns",
+      "image": "/images/wallets/marketing.png",
+      "badges": [
+        {
+          "text": "Official",
+          "color": "primary",
+          "bgColor": "bg-primary/20",
+          "textColor": "text-primary",
+          "borderColor": "border-primary/30"
+        },
+        {
+          "text": "Marketing",
+          "color": "pink",
+          "bgColor": "bg-pink-500/20",
+          "textColor": "text-pink-700 dark:text-pink-400",
+          "borderColor": "border-pink-500/30"
+        }
+      ],
+      "category": "treasury",
+      "verified": true,
+      "featured": false
+    },
+    "0x0000000000000000000000000000000000000007": {
+      "name": "Liquidity Pool Reserve",
+      "description": "Reserve funds for maintaining liquidity across DEX pools",
+      "image": "/images/wallets/liquidity.png",
+      "badges": [
+        {
+          "text": "DeFi",
+          "color": "cyan",
+          "bgColor": "bg-cyan-500/20",
+          "textColor": "text-cyan-700 dark:text-cyan-400",
+          "borderColor": "border-cyan-500/30"
+        },
+        {
+          "text": "Liquidity",
+          "color": "blue",
+          "bgColor": "bg-blue-500/20",
+          "textColor": "text-blue-700 dark:text-blue-400",
+          "borderColor": "border-blue-500/30"
+        }
+      ],
+      "category": "defi",
+      "verified": true,
+      "featured": false
+    },
+    "0x0000000000000000000000000000000000000008": {
+      "name": "Treasury Multisig",
+      "description": "Main protocol treasury controlled by multi-signature governance",
+      "image": "/images/wallets/treasury.png",
+      "badges": [
+        {
+          "text": "Official",
+          "color": "primary",
+          "bgColor": "bg-primary/20",
+          "textColor": "text-primary",
+          "borderColor": "border-primary/30"
+        },
+        {
+          "text": "Multisig",
+          "color": "orange",
+          "bgColor": "bg-orange-500/20",
+          "textColor": "text-orange-700 dark:text-orange-400",
+          "borderColor": "border-orange-500/30"
+        },
+        {
+          "text": "Treasury",
+          "color": "green",
+          "bgColor": "bg-green-500/20",
+          "textColor": "text-green-700 dark:text-green-400",
+          "borderColor": "border-green-500/30"
+        }
+      ],
+      "category": "treasury",
+      "verified": true,
+      "featured": true
+    },
+    "0x0000000000000000000000000000000000000009": {
+      "name": "Bug Bounty Program",
+      "description": "Rewards security researchers for finding and reporting vulnerabilities",
+      "image": "/images/wallets/bug-bounty.png",
+      "badges": [
+        {
+          "text": "Official",
+          "color": "primary",
+          "bgColor": "bg-primary/20",
+          "textColor": "text-primary",
+          "borderColor": "border-primary/30"
+        },
+        {
+          "text": "Security",
+          "color": "red",
+          "bgColor": "bg-red-500/20",
+          "textColor": "text-red-700 dark:text-red-400",
+          "borderColor": "border-red-500/30"
+        }
+      ],
+      "category": "security",
+      "verified": true,
+      "featured": false
+    },
+    "0x000000000000000000000000000000000000000a": {
+      "name": "Airdrop Distribution",
+      "description": "Manages community airdrops and token distribution campaigns",
+      "image": "/images/wallets/airdrop.png",
+      "badges": [
+        {
+          "text": "Official",
+          "color": "primary",
+          "bgColor": "bg-primary/20",
+          "textColor": "text-primary",
+          "borderColor": "border-primary/30"
+        },
+        {
+          "text": "Airdrop",
+          "color": "violet",
+          "bgColor": "bg-violet-500/20",
+          "textColor": "text-violet-700 dark:text-violet-400",
+          "borderColor": "border-violet-500/30"
+        }
+      ],
+      "category": "distribution",
+      "verified": true,
+      "featured": false
+    }
+  }
+}
