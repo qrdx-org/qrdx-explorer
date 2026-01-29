@@ -3,7 +3,7 @@
     "0x0000000000000000000000000000000000000001": {
       "name": "Garbage Collector",
       "description": "Automated garbage collection wallet that burns unclaimed tokens and fees",
-      "image": "/images/wallets/garbage-collector.png",
+      "image": "/images/wallets/garbage-collector.svg",
       "badges": [
         {
           "text": "System Wallet",
@@ -27,7 +27,7 @@
     "0x0000000000000000000000000000000000000002": {
       "name": "Community Grant Wallet",
       "description": "Distributes grants to community projects and ecosystem development initiatives",
-      "image": "/images/wallets/community-grants.png",
+      "image": "/images/wallets/community-grants.svg",
       "badges": [
         {
           "text": "Official",
@@ -51,7 +51,7 @@
     "0x0000000000000000000000000000000000000003": {
       "name": "Developer Fund",
       "description": "Core development team funding wallet for protocol maintenance and improvements",
-      "image": "/images/wallets/developer-fund.png",
+      "image": "/images/wallets/developer-fund.svg",
       "badges": [
         {
           "text": "Official",
@@ -75,7 +75,7 @@
     "0x0000000000000000000000000000000000000004": {
       "name": "Ecosystem Fund",
       "description": "Strategic investments in projects building on the QRDX network",
-      "image": "/images/wallets/ecosystem-fund.png",
+      "image": "/images/wallets/ecosystem-fund.svg",
       "badges": [
         {
           "text": "Official",
@@ -96,10 +96,10 @@
       "verified": true,
       "featured": true
     },
-    "0xPQ6EF1ca0bE624B5F734ba579c88921082415f82E5dEaf65F4086c29148F3e538e": {
+    "0xPQ8Fd4f2E9cCE1a662C0ccFFfa4370945121B8Fd3a894e56705e9C19449D99428a": {
       "name": "Staking Rewards Pool",
       "description": "Distributes staking rewards to network validators and delegators",
-      "image": "/images/wallets/staking-rewards.png",
+      "image": "/images/wallets/staking-rewards.svg",
       "badges": [
         {
           "text": "System Wallet",
@@ -123,7 +123,7 @@
     "0x0000000000000000000000000000000000000006": {
       "name": "Marketing & Partnerships",
       "description": "Funds marketing initiatives, partnerships, and ecosystem growth campaigns",
-      "image": "/images/wallets/marketing.png",
+      "image": "/images/wallets/marketing.svg",
       "badges": [
         {
           "text": "Official",
@@ -147,7 +147,7 @@
     "0x0000000000000000000000000000000000000007": {
       "name": "Liquidity Pool Reserve",
       "description": "Reserve funds for maintaining liquidity across DEX pools",
-      "image": "/images/wallets/liquidity.png",
+      "image": "/images/wallets/liquidity.svg",
       "badges": [
         {
           "text": "DeFi",
@@ -171,7 +171,7 @@
     "0x0000000000000000000000000000000000000008": {
       "name": "Treasury Multisig",
       "description": "Main protocol treasury controlled by multi-signature governance",
-      "image": "/images/wallets/treasury.png",
+      "image": "/images/wallets/treasury.svg",
       "badges": [
         {
           "text": "Official",
@@ -202,7 +202,7 @@
     "0x0000000000000000000000000000000000000009": {
       "name": "Bug Bounty Program",
       "description": "Rewards security researchers for finding and reporting vulnerabilities",
-      "image": "/images/wallets/bug-bounty.png",
+      "image": "/images/wallets/bug-bounty.svg",
       "badges": [
         {
           "text": "Official",
@@ -226,7 +226,7 @@
     "0x000000000000000000000000000000000000000a": {
       "name": "Airdrop Distribution",
       "description": "Manages community airdrops and token distribution campaigns",
-      "image": "/images/wallets/airdrop.png",
+      "image": "/images/wallets/airdrop.svg",
       "badges": [
         {
           "text": "Official",

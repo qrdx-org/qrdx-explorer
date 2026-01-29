@@ -74,14 +74,32 @@ export async function getTokenPrice(tokenAddressOrSymbol: string): Promise<Token
  * Get prices for multiple tokens in a single batch
  * Note: This makes individual requests but returns them together
  * Could be optimized with a batch endpoint if available
+ * Returns -1 price for tokens that fail to fetch
  */
 export async function getTokenPrices(tokens: string[]): Promise<Map<string, TokenPrice>> {
   const priceMap = new Map<string, TokenPrice>()
   
   const promises = tokens.map(async (token) => {
-    const price = await getTokenPrice(token)
-    if (price) {
-      priceMap.set(token.toLowerCase(), price)
+    try {
+      const price = await getTokenPrice(token)
+      if (price) {
+        priceMap.set(token.toLowerCase(), price)
+      } else {
+        // Price not found - set to -1 to indicate unknown
+        priceMap.set(token.toLowerCase(), {
+          token: token,
+          price_usd: -1,
+          last_updated: Date.now()
+        })
+      }
+    } catch (error) {
+      // Error fetching price - set to -1 to indicate error
+      console.warn(`Failed to fetch price for ${token}, marking as unknown`)
+      priceMap.set(token.toLowerCase(), {
+        token: token,
+        price_usd: -1,
+        last_updated: Date.now()
+      })
     }
   })
   

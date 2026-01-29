@@ -154,3 +154,10 @@ export function formatNumber(num: number, decimals: number = 2): string {
 export function formatUSD(amount: number): string {
   return `$${formatNumber(amount, 2)}`
 }
+
+export function formatBalance(amount: number, decimals: number = 4): string {
+  return amount.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  })
+}

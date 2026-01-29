@@ -26,8 +26,20 @@ const knownAddresses: KnownAddresses = knownAddressesData.addresses as KnownAddr
  * Get metadata for a known address
  */
 export function getKnownAddress(address: string): KnownAddress | null {
+  // Try exact match first
+  if (knownAddresses[address]) {
+    return knownAddresses[address]
+  }
+  
+  // Try case-insensitive match
   const normalizedAddress = address.toLowerCase()
-  return knownAddresses[normalizedAddress] || null
+  for (const key in knownAddresses) {
+    if (key.toLowerCase() === normalizedAddress) {
+      return knownAddresses[key]
+    }
+  }
+  
+  return null
 }
 
 /**

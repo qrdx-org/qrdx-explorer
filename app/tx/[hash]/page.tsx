@@ -10,6 +10,7 @@ import { formatAddress, formatTimestamp, formatUSD } from '@/lib/mock-data'
 import { getTransaction, type TransactionResponse } from '@/lib/api-client'
 import { getTokenPriceWithFallback } from '@/lib/pricing-api'
 import { updateUrlWithNetwork, getCurrentNetworkConfig, type NetworkType } from '@/lib/network-utils'
+import { weiToQRDX } from '@/lib/utils'
 
 interface PageProps {
   params: Promise<{ hash: string }>
@@ -103,11 +104,11 @@ export default function TransactionPage({ params }: PageProps) {
     )
   }
 
-  const value = parseFloat(transaction.value || '0')
+  const value = weiToQRDX(transaction.value || '0')
   const gasUsed = parseFloat(transaction.gas_used || '0')
-  const gasPrice = parseFloat(transaction.gas_price || '0')
+  const gasPrice = weiToQRDX(transaction.gas_price || '0')
   const gasLimit = parseFloat(transaction.gas_limit || '0')
-  const fee = (gasUsed * gasPrice) / 1e18
+  const fee = gasUsed * gasPrice
   const valueUSD = value * qrdxPrice
   const feeUSD = fee * qrdxPrice
 

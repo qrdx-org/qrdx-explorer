@@ -12,13 +12,14 @@ import ClaimWalletDialog from '@/components/ClaimWalletDialog'
 import ShareAddressDialog from '@/components/ShareAddressDialog'
 import PnLChart from '@/components/PnLChart'
 import MiniTokenChart from '@/components/MiniTokenChart'
-import { formatAddress, formatTimestamp, formatUSD } from '@/lib/mock-data'
+import { formatAddress, formatTimestamp, formatUSD, formatBalance } from '@/lib/mock-data'
 import { ClaimMetadata } from '@/lib/types'
 import { getAddressInfo, getAddressTokens, type TransactionResponse, type AddressToken } from '@/lib/api-client'
 import { getTokenPrices, getTokenPriceWithFallback } from '@/lib/pricing-api'
 import { calculateTokenPositions, calculateTokenBalance, type TokenPosition } from '@/lib/token-positions'
 import { updateUrlWithNetwork, getCurrentNetworkConfig, type NetworkType } from '@/lib/network-utils'
 import { getKnownAddress, isKnownAddress } from '@/lib/known-addresses'
+import { weiToQRDX } from '@/lib/utils'
 
 interface PageProps {
   params: Promise<{ address: string }>
@@ -108,9 +109,11 @@ function TokenHoldingItem({
               {/* Values */}
               <div className="text-right">
                 <div className="font-medium">{token.balance_formatted.toFixed(4)} {token.token.symbol}</div>
-                <div className="text-sm text-muted-foreground">{formatUSD(token.usdValue)}</div>
+                <div className="text-sm text-muted-foreground">
+                  {token.price >= 0 ? formatUSD(token.usdValue) : 'N/A'}
+                </div>
                 <div className={`text-xs ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
-                  {isPositive ? '+' : ''}{priceChange.toFixed(2)}%
+                  {token.price >= 0 ? `${isPositive ? '+' : ''}${priceChange.toFixed(2)}%` : 'Price unavailable'}
                 </div>
               </div>
               
@@ -190,12 +193,15 @@ export default function AddressPage({ params }: PageProps) {
     // Check if this is a known address and auto-populate metadata
     const knownAddr = getKnownAddress(address)
     if (knownAddr) {
+      console.log('Found known address:', knownAddr)
       setMetadata({
         name: knownAddr.name,
         description: knownAddr.description,
         image: knownAddr.image,
       })
       setClaimed(knownAddr.verified)
+    } else {
+      console.log('No known address found for:', address)
     }
   }, [address])
 
@@ -217,50 +223,60 @@ export default function AddressPage({ params }: PageProps) {
           throw new Error(addressResponse.error || 'Failed to fetch address info')
         }
         
-        setAddressInfo(addressResponse.data)
-        setTransactions(addressResponse.data.transactions || [])
+        // The API wraps the response in a 'result' object
+        const data = addressResponse.data.result || addressResponse.data
+        
+        setAddressInfo(data)
+        setTransactions(data.transactions || [])
         
         // Fetch QRDX price
         const price = await getTokenPriceWithFallback('QRDX')
         setQrdxPrice(price)
         
-        // Fetch tokens owned by this address
-        const tokensResponse = await getAddressTokens(address)
-        
-        if (tokensResponse.data && tokensResponse.data.tokens) {
-          // Fetch prices for all tokens
-          const tokenSymbols = tokensResponse.data.tokens.map(t => t.token.symbol)
-          const priceMap = await getTokenPrices(tokenSymbols)
+        // Fetch tokens owned by this address (non-blocking - don't throw if it fails)
+        try {
+          const tokensResponse = await getAddressTokens(address)
           
-          // Calculate positions and USD values
-          const tokensWithPrices: TokenHoldingWithPrice[] = tokensResponse.data.tokens.map(token => {
-            const price = priceMap.get(token.token.symbol.toLowerCase())?.price_usd || 0
-            const usdValue = token.balance_formatted * price
+          if (tokensResponse.data && tokensResponse.data.tokens) {
+            // Fetch prices for all tokens
+            const tokenSymbols = tokensResponse.data.tokens.map(t => t.token.symbol)
+            const priceMap = await getTokenPrices(tokenSymbols)
             
-            // Calculate positions from transaction history
-            const positions = calculateTokenPositions(
-              addressResponse.data?.transactions || [],
-              address,
-              token.token.address,
-              token.token.decimals
-            )
+            // Calculate positions and USD values
+            const tokensWithPrices: TokenHoldingWithPrice[] = tokensResponse.data.tokens.map(token => {
+              const priceData = priceMap.get(token.token.symbol.toLowerCase())
+              const price = priceData?.price_usd ?? -1 // Use -1 if price not found
+              // Only calculate USD value if price is valid (>= 0)
+              const usdValue = price >= 0 ? token.balance_formatted * price : 0
+              
+              // Calculate positions from transaction history
+              const positions = calculateTokenPositions(
+                data?.transactions || [],
+                address,
+                token.token.address,
+                token.token.decimals
+              )
+              
+              return {
+                ...token,
+                price,
+                usdValue,
+                percentage: 0, // Will calculate after we have total
+                positions
+              }
+            })
             
-            return {
-              ...token,
-              price,
-              usdValue,
-              percentage: 0, // Will calculate after we have total
-              positions
-            }
-          })
-          
-          // Calculate percentages
-          const totalValue = tokensWithPrices.reduce((sum, t) => sum + t.usdValue, 0)
-          tokensWithPrices.forEach(t => {
-            t.percentage = totalValue > 0 ? (t.usdValue / totalValue) * 100 : 0
-          })
-          
-          setTokens(tokensWithPrices)
+            // Calculate percentages
+            const totalValue = tokensWithPrices.reduce((sum, t) => sum + t.usdValue, 0)
+            tokensWithPrices.forEach(t => {
+              t.percentage = totalValue > 0 ? (t.usdValue / totalValue) * 100 : 0
+            })
+            
+            setTokens(tokensWithPrices)
+          }
+        } catch (tokenError) {
+          // Log token fetch error but don't fail the whole page
+          console.warn('Failed to fetch tokens (this is okay if not implemented yet):', tokenError)
         }
         
       } catch (err) {
@@ -285,16 +301,16 @@ export default function AddressPage({ params }: PageProps) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Generate mock PnL data (could be calculated from transaction history in the future)
-  const pnlData = Array.from({ length: 7 }, (_, i) => ({
-    time: Date.now() / 1000 - (6 - i) * 86400,
-    value: (addressInfo?.balance ? parseFloat(addressInfo.balance) : 0) * qrdxPrice * (0.9 + Math.random() * 0.2)
-  }))
-
   const totalTokenValue = tokens.reduce((sum, token) => sum + token.usdValue, 0)
   const balance = addressInfo?.balance ? parseFloat(addressInfo.balance) : 0
   const balanceUSD = balance * qrdxPrice
   const totalValue = balanceUSD + totalTokenValue
+
+  // Generate mock PnL data (could be calculated from transaction history in the future)
+  const pnlData = Array.from({ length: 7 }, (_, i) => ({
+    time: Date.now() / 1000 - (6 - i) * 86400,
+    value: balance * qrdxPrice * (0.9 + Math.random() * 0.2)
+  }))
 
   // Loading state
   if (loading && !addressInfo) {
@@ -407,7 +423,7 @@ export default function AddressPage({ params }: PageProps) {
             <CardDescription>Total Balance</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{balance.toFixed(4)} QRDX</div>
+            <div className="text-2xl font-bold">{formatBalance(balance)} QRDX</div>
             <div className="text-sm text-muted-foreground">{formatUSD(balanceUSD)}</div>
           </CardContent>
         </Card>
