@@ -362,3 +362,31 @@ export async function getTokenInfo(
     return { error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
+
+/**
+ * Get top addresses by balance or transaction count
+ */
+export async function getTopAddresses(
+  limit: number = 100,
+  orderBy: 'balance' | 'transaction_count' = 'balance'
+): Promise<ApiResponse<TopAddressesResponse>> {
+  try {
+    const apiUrl = getApiBaseUrl()
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      order_by: orderBy,
+    })
+
+    const response = await fetch(`${apiUrl}/get_top_addresses?${params}`)
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    return { data }
+  } catch (error) {
+    console.error('Error fetching top addresses:', error)
+    return { error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
