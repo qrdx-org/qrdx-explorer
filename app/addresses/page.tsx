@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import AddressAvatar from '@/components/AddressAvatar'
-import { formatAddress, formatUSD, formatBalance } from '@/lib/mock-data'
+import { formatAddress, formatUSD, formatBalance, formatLargeNumber } from '@/lib/mock-data'
 import { getAllKnownAddresses, type KnownAddress, getKnownAddress } from '@/lib/known-addresses'
 import { getTopAddresses } from '@/lib/api-client'
-import { ChevronLeft, ChevronRight, Search, ArrowUpDown, Users, Award, AlertCircle } from 'lucide-react'
+import { getTokenPriceWithFallback } from '@/lib/pricing-api'
+import { ChevronLeft, ChevronRight, Search, ArrowUpDown, Users, Award, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react'
 import { updateUrlWithNetwork, getCurrentNetworkConfig, type NetworkType } from '@/lib/network-utils'
 
 interface AddressData {
@@ -28,6 +29,7 @@ export default function AddressesPage() {
   const [filteredAddresses, setFilteredAddresses] = useState<AddressData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [qrdxPrice, setQrdxPrice] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [sortField, setSortField] = useState<SortField>('balance')
@@ -53,6 +55,10 @@ export default function AddressesPage() {
       setError(null)
       
       try {
+        // Fetch QRDX price
+        const price = await getTokenPriceWithFallback('QRDX')
+        setQrdxPrice(price)
+        
         // Fetch top addresses from API
         const response = await getTopAddresses(1000, 'balance')
         
@@ -272,14 +278,17 @@ export default function AddressesPage() {
           {/* Table Header */}
           <div className="hidden md:grid md:grid-cols-12 gap-4 px-4 py-3 border-b font-medium text-sm">
             <div className="col-span-1 text-muted-foreground">#</div>
-            <div className="col-span-5 text-muted-foreground">
+            <div className="col-span-4 text-muted-foreground">
               <SortButton field="address">Address</SortButton>
             </div>
-            <div className="col-span-3 text-muted-foreground text-right">
+            <div className="col-span-2 text-muted-foreground text-right">
               <SortButton field="balance">Balance</SortButton>
             </div>
             <div className="col-span-3 text-muted-foreground text-right">
-              <SortButton field="transactions">Transactions</SortButton>
+              Value
+            </div>
+            <div className="col-span-2 text-muted-foreground text-right">
+              <SortButton field="transactions">Txns</SortButton>
             </div>
           </div>
 
@@ -294,7 +303,13 @@ export default function AddressesPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {currentAddresses.map((addr, index) => (
+              {currentAddresses.map((addr, index) => {
+                const usdValue = addr.balance * qrdxPrice
+                // Mock 24h change (replace with real data when available)
+                const priceChange = (Math.random() - 0.5) * 20
+                const isPositive = priceChange >= 0
+                
+                return (
                 <Link
                   key={addr.address}
                   href={`/address/${addr.address}`}
@@ -306,7 +321,7 @@ export default function AddressesPage() {
                   </div>
                   
                   {/* Address Info */}
-                  <div className="col-span-12 md:col-span-5 flex items-center gap-3">
+                  <div className="col-span-12 md:col-span-4 flex items-center gap-3">
                     <AddressAvatar
                       address={addr.address}
                       size={40}
@@ -344,22 +359,35 @@ export default function AddressesPage() {
                   </div>
                   
                   {/* Balance */}
-                  <div className="col-span-6 md:col-span-3 flex md:justify-end items-center">
+                  <div className="col-span-4 md:col-span-2 flex md:justify-end items-center">
                     <div className="text-right">
-                      <div className="font-medium">{formatBalance(addr.balance)} QRDX</div>
+                      <div className="font-medium">{formatLargeNumber(addr.balance)} QRDX</div>
                       <div className="text-sm text-muted-foreground md:hidden">Balance</div>
                     </div>
                   </div>
                   
+                  {/* Value */}
+                  <div className="col-span-4 md:col-span-3 flex md:justify-end items-center">
+                    <div className="text-right">
+                      <div className="font-medium">{formatUSD(usdValue)}</div>
+                      <div className={`text-xs flex items-center gap-1 justify-end ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+                        {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                        {isPositive ? '+' : ''}{priceChange.toFixed(2)}%
+                      </div>
+                      <div className="text-sm text-muted-foreground md:hidden">Value (24h)</div>
+                    </div>
+                  </div>
+                  
                   {/* Transactions */}
-                  <div className="col-span-6 md:col-span-3 flex md:justify-end items-center">
+                  <div className="col-span-4 md:col-span-2 flex md:justify-end items-center">
                     <div className="text-right">
                       <div className="font-medium">{addr.transactionCount.toLocaleString()}</div>
                       <div className="text-sm text-muted-foreground md:hidden">Transactions</div>
                     </div>
                   </div>
                 </Link>
-              ))}
+              )
+              })}
             </div>
           )}
 

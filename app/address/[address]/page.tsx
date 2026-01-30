@@ -15,7 +15,7 @@ import MiniTokenChart from '@/components/MiniTokenChart'
 import { formatAddress, formatTimestamp, formatUSD, formatBalance } from '@/lib/mock-data'
 import { ClaimMetadata } from '@/lib/types'
 import { getAddressInfo, getAddressTokens, type TransactionResponse, type AddressToken } from '@/lib/api-client'
-import { getTokenPrices, getTokenPriceWithFallback } from '@/lib/pricing-api'
+import { getTokenPrices, getTokenPriceWithFallback, getHistoricalPrices, generateHistoricalDataFromTransactions } from '@/lib/pricing-api'
 import { calculateTokenPositions, calculateTokenBalance, type TokenPosition } from '@/lib/token-positions'
 import { updateUrlWithNetwork, getCurrentNetworkConfig, type NetworkType } from '@/lib/network-utils'
 import { getKnownAddress, isKnownAddress } from '@/lib/known-addresses'
@@ -67,19 +67,48 @@ function TokenHoldingItem({
   userAddress: string
 }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [chartData, setChartData] = useState<Array<{ time: any; value: number }>>([])
   const positions = token.positions.length > 0 ? token.positions : generateMockPositions(token.token.symbol)
   
-  // Generate mini chart data
-  const miniChartData = Array.from({ length: 7 }, (_, i) => {
-    const basePrice = token.price
-    const variance = (Math.random() - 0.5) * basePrice * 0.2
-    return {
-      time: (Date.now() / 1000 - (6 - i) * 86400) as any,
-      value: basePrice + variance
+  // Fetch historical price data for the chart
+  useEffect(() => {
+    async function fetchChartData() {
+      if (token.price < 0) {
+        // No price available, use flat line
+        setChartData(Array.from({ length: 7 }, (_, i) => ({
+          time: (Date.now() / 1000 - (6 - i) * 86400) as any,
+          value: 0
+        })))
+        return
+      }
+      
+      const historicalPrices = await getHistoricalPrices(token.token.symbol, '1d', 7)
+      
+      if (historicalPrices && historicalPrices.data.length > 0) {
+        setChartData(historicalPrices.data.map(point => ({
+          time: point.timestamp as any,
+          value: point.price_usd
+        })))
+      } else {
+        // Fallback to generated data based on transactions
+        const historicalPoints = generateHistoricalDataFromTransactions(
+          token.price,
+          positions.map(p => ({ timestamp: p.timestamp })),
+          7
+        )
+        setChartData(historicalPoints.map(point => ({
+          time: point.timestamp as any,
+          value: point.price_usd
+        })))
+      }
     }
-  })
+    
+    fetchChartData()
+  }, [token.price, token.token.symbol])
   
-  const priceChange = ((miniChartData[6].value - miniChartData[0].value) / miniChartData[0].value) * 100
+  const priceChange = chartData.length >= 2 
+    ? ((chartData[chartData.length - 1].value - chartData[0].value) / chartData[0].value) * 100
+    : 0
   const isPositive = priceChange >= 0
 
   return (
@@ -103,7 +132,7 @@ function TokenHoldingItem({
             <div className="flex items-center gap-4">
               {/* Mini Chart */}
               <div className="w-24 h-12">
-                <MiniTokenChart data={miniChartData} positive={isPositive} />
+                <MiniTokenChart data={chartData} positive={isPositive} />
               </div>
               
               {/* Values */}
@@ -306,11 +335,40 @@ export default function AddressPage({ params }: PageProps) {
   const balanceUSD = balance * qrdxPrice
   const totalValue = balanceUSD + totalTokenValue
 
-  // Generate mock PnL data (could be calculated from transaction history in the future)
-  const pnlData = Array.from({ length: 7 }, (_, i) => ({
-    time: Date.now() / 1000 - (6 - i) * 86400,
-    value: balance * qrdxPrice * (0.9 + Math.random() * 0.2)
-  }))
+  // Generate PnL data from historical prices or transaction timeline
+  const [pnlData, setPnlData] = useState<Array<{ time: number; value: number }>>([])
+  
+  useEffect(() => {
+    async function fetchHistoricalData() {
+      if (!qrdxPrice || !balance) return
+      
+      // Try to get real historical price data
+      const historicalPrices = await getHistoricalPrices('QRDX', '1d', 7)
+      
+      if (historicalPrices && historicalPrices.data.length > 0) {
+        // Use real historical prices
+        const data = historicalPrices.data.map(point => ({
+          time: point.timestamp,
+          value: balance * point.price_usd
+        }))
+        setPnlData(data)
+      } else {
+        // Fallback: generate historical data based on transaction timeline
+        const historicalPoints = generateHistoricalDataFromTransactions(
+          qrdxPrice,
+          transactions,
+          7
+        )
+        const data = historicalPoints.map(point => ({
+          time: point.timestamp,
+          value: balance * point.price_usd
+        }))
+        setPnlData(data)
+      }
+    }
+    
+    fetchHistoricalData()
+  }, [qrdxPrice, balance, transactions])
 
   // Loading state
   if (loading && !addressInfo) {

@@ -15,6 +15,18 @@ export interface TokenPrice {
   last_updated: number
 }
 
+export interface HistoricalPricePoint {
+  timestamp: number
+  price_usd: number
+  volume?: number
+}
+
+export interface HistoricalPriceData {
+  token: string
+  interval: string
+  data: HistoricalPricePoint[]
+}
+
 interface PricingCache {
   [key: string]: {
     data: TokenPrice
@@ -125,6 +137,96 @@ export async function calculateTokenValue(
 export async function getQRDXPrice(): Promise<number> {
   const price = await getTokenPrice('QRDX')
   return price?.price_usd || 0
+}
+
+/**
+ * Get historical prices for a token
+ * @param tokenAddressOrSymbol - Token contract address or symbol
+ * @param interval - Time interval: '1h', '1d', '1w', '1m'
+ * @param limit - Number of data points to return (default: 168 for 7 days hourly)
+ * @returns Historical price data or null if not found
+ */
+export async function getHistoricalPrices(
+  tokenAddressOrSymbol: string,
+  interval: '1h' | '1d' | '1w' | '1m' = '1d',
+  limit: number = 7
+): Promise<HistoricalPriceData | null> {
+  try {
+    const response = await fetch(
+      `${PRICING_API_BASE}/${tokenAddressOrSymbol}/history?interval=${interval}&limit=${limit}`,
+      { next: { revalidate: 300 } } // Cache for 5 minutes
+    )
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.warn(`Historical prices not found for token: ${tokenAddressOrSymbol}`)
+        return null
+      }
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const data: HistoricalPriceData = await response.json()
+    return data
+  } catch (error) {
+    console.error(`Error fetching historical prices for ${tokenAddressOrSymbol}:`, error)
+    return null
+  }
+}
+
+/**
+ * Generate stub historical data based on current price and transaction timeline
+ */
+export function generateHistoricalDataFromTransactions(
+  currentPrice: number,
+  transactions: Array<{ timestamp: number; value?: number }>,
+  days: number = 7
+): HistoricalPricePoint[] {
+  const now = Date.now()
+  const dayMs = 24 * 60 * 60 * 1000
+  const points: HistoricalPricePoint[] = []
+  
+  // If we have transactions, use their timeline
+  if (transactions.length > 0) {
+    // Group transactions by day
+    const txByDay = new Map<number, number[]>()
+    transactions.forEach(tx => {
+      const dayIndex = Math.floor((now - tx.timestamp) / dayMs)
+      if (dayIndex < days) {
+        if (!txByDay.has(dayIndex)) {
+          txByDay.set(dayIndex, [])
+        }
+        txByDay.get(dayIndex)!.push(tx.timestamp)
+      }
+    })
+    
+    // Generate price points with some volatility based on transaction activity
+    for (let i = days - 1; i >= 0; i--) {
+      const timestamp = now - (i * dayMs)
+      const txCount = txByDay.get(i)?.length || 0
+      // More transactions = more volatility
+      const volatility = txCount > 0 ? 0.05 : 0.02
+      const change = (Math.random() - 0.5) * volatility
+      const price = currentPrice * (1 + change * (i / days))
+      
+      points.push({
+        timestamp: Math.floor(timestamp / 1000),
+        price_usd: price,
+        volume: txCount * currentPrice * (Math.random() * 1000)
+      })
+    }
+  } else {
+    // No transactions, generate simple trend data
+    for (let i = days - 1; i >= 0; i--) {
+      const timestamp = now - (i * dayMs)
+      const variance = (Math.random() - 0.5) * currentPrice * 0.1
+      points.push({
+        timestamp: Math.floor(timestamp / 1000),
+        price_usd: currentPrice + variance
+      })
+    }
+  }
+  
+  return points
 }
 
 /**
