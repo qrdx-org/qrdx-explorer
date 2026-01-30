@@ -19,7 +19,9 @@ export function generateIdenticon(address: string, size: number = 64): string {
     if (!ctx) return ''
     
     // Use address to seed random colors and pattern
-    const seed = parseInt(address.slice(2, 10), 16)
+    // Handle both ETH (0x...) and PQ (0xPQ...) addresses
+    const hexStart = address.startsWith('0xPQ') ? 4 : 2
+    const seed = parseInt(address.slice(hexStart, hexStart + 8), 16)
     const color = generateColor(seed)
     const bgColor = generateBackgroundColor(seed)
     
