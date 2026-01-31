@@ -96,7 +96,7 @@
       "verified": true,
       "featured": true
     },
-    "0xPQ8Fd4f2E9cCE1a662C0ccFFfa4370945121B8Fd3a894e56705e9C19449D99428a": {
+    "0x0000000000000000000000000000000000000005": {
       "name": "Staking Rewards Pool",
       "description": "Distributes staking rewards to network validators and delegators",
       "image": "/images/wallets/staking-rewards.svg",
