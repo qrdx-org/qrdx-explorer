@@ -253,7 +253,7 @@ export default function AddressPage({ params }: PageProps) {
         }
         
         // The API wraps the response in a 'result' object
-        const data = addressResponse.data.result || addressResponse.data
+        const data = (addressResponse.data as any).result || addressResponse.data
         
         setAddressInfo(data)
         setTransactions(data.transactions || [])
