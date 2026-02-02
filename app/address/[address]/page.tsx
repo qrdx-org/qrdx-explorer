@@ -331,7 +331,7 @@ export default function AddressPage({ params }: PageProps) {
   }
 
   const totalTokenValue = tokens.reduce((sum, token) => sum + token.usdValue, 0)
-  const balance = addressInfo?.balance ? parseFloat(addressInfo.balance) : 0
+  const balance = addressInfo?.balance ? weiToQRDX(addressInfo.balance) : 0
   const balanceUSD = balance * qrdxPrice
   const totalValue = balanceUSD + totalTokenValue
 
@@ -555,10 +555,10 @@ export default function AddressPage({ params }: PageProps) {
                 <div className="space-y-2">
                   {transactions.map((tx) => {
                     const isOutgoing = tx.from.toLowerCase() === address.toLowerCase()
-                    const value = parseFloat(tx.value || '0')
+                    const value = weiToQRDX(tx.value || '0')
                     const gasUsed = parseFloat(tx.gas_used || '0')
-                    const gasPrice = parseFloat(tx.gas_price || '0')
-                    const fee = (gasUsed * gasPrice) / 1e18
+                    const gasPrice = weiToQRDX(tx.gas_price || '0')
+                    const fee = gasUsed * gasPrice
                     
                     return (
                       <div
@@ -677,7 +677,7 @@ export default function AddressPage({ params }: PageProps) {
                   <div className="text-sm text-muted-foreground mb-1">Avg Transaction Value</div>
                   <div className="font-medium">
                     {transactions.length > 0
-                      ? (transactions.reduce((sum, tx) => sum + parseFloat(tx.value || '0'), 0) / transactions.length).toFixed(4)
+                      ? (transactions.reduce((sum, tx) => sum + weiToQRDX(tx.value || '0'), 0) / transactions.length).toFixed(4)
                       : '0'} QRDX
                   </div>
                 </div>
@@ -686,8 +686,8 @@ export default function AddressPage({ params }: PageProps) {
                   <div className="font-medium">
                     {transactions.reduce((sum, tx) => {
                       const gasUsed = parseFloat(tx.gas_used || '0')
-                      const gasPrice = parseFloat(tx.gas_price || '0')
-                      return sum + (gasUsed * gasPrice) / 1e18
+                      const gasPrice = weiToQRDX(tx.gas_price || '0')
+                      return sum + (gasUsed * gasPrice)
                     }, 0).toFixed(6)} QRDX
                   </div>
                 </div>

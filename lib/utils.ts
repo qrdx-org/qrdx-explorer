@@ -6,8 +6,8 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Convert wei (smallest unit) to QRDX
- * 1 QRDX = 10^18 wei
+ * Convert smallest unit to QRDX
+ * 1 QRDX = 10^6 smallest units (6 decimals)
  */
 export function weiToQRDX(wei: string | number): number {
   if (typeof wei === 'string') {
@@ -23,12 +23,12 @@ export function weiToQRDX(wei: string | number): number {
     return 0
   }
   
-  // Divide by 10^18 to convert wei to QRDX
-  return wei / 1e18
+  // Divide by 10^6 to convert smallest unit to QRDX
+  return wei / 1e6
 }
 
 /**
- * Convert QRDX to wei (smallest unit)
+ * Convert QRDX to smallest unit
  */
 export function qrdxToWei(qrdx: string | number): string {
   if (typeof qrdx === 'string') {
@@ -39,6 +39,6 @@ export function qrdxToWei(qrdx: string | number): string {
     return '0'
   }
   
-  // Multiply by 10^18 and convert to string
-  return (qrdx * 1e18).toString()
+  // Multiply by 10^6 and convert to string
+  return (qrdx * 1e6).toString()
 }

@@ -125,6 +125,18 @@ export interface AddressTokensResponse {
   total_count: number
 }
 
+export interface TopAddressItem {
+  address: string
+  balance: string
+  output_count: number
+}
+
+export interface TopAddressesResponse {
+  result: {
+    addresses: TopAddressItem[]
+  }
+}
+
 /**
  * Get address information including balance and transaction history
  */

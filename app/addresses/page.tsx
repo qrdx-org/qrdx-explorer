@@ -13,6 +13,7 @@ import { getTopAddresses } from '@/lib/api-client'
 import { getTokenPriceWithFallback } from '@/lib/pricing-api'
 import { ChevronLeft, ChevronRight, Search, ArrowUpDown, Users, Award, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react'
 import { updateUrlWithNetwork, getCurrentNetworkConfig, type NetworkType } from '@/lib/network-utils'
+import { weiToQRDX } from '@/lib/utils'
 
 interface AddressData {
   address: string
@@ -71,8 +72,8 @@ export default function AddressesPage() {
         
         // Map API response to AddressData format
         const addressList: AddressData[] = result.addresses.map((item) => {
-          // Parse balance from string (in wei) to QRDX number
-          const balance = parseFloat(item.balance)
+          // Parse balance from string (in smallest unit) to QRDX number
+          const balance = weiToQRDX(item.balance)
           
           // Check if this is a known address
           const knownAddr = getKnownAddress(item.address)
