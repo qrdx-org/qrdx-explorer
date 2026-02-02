@@ -47,4 +47,4 @@ pnpm-lock.yaml
 .pnpm-store
 
 # submodules since only using for ref rn
-/submodules/*
+#/submodules/*

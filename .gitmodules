@@ -1,5 +1,6 @@
 [submodule "submodules/qrdx-website"]
 	path = submodules/qrdx-website
 	url = https://github.com/qrdx-org/qrdx-website
-#[submodule "submodules/qrdx-trade"]
-#	path = submodules/qrdx-trade
+[submodule "submodules/qrdx-trade"]
+	path = submodules/qrdx-trade
+	url = https://github.com/qrdx-org/qrdx-trade
