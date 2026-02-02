@@ -45,3 +45,6 @@ next-env.d.ts
 # pnpm
 pnpm-lock.yaml
 .pnpm-store
+
+# submodules since only using for ref rn
+/submodules/*
