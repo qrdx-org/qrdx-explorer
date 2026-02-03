@@ -10,6 +10,9 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  experimental: {
+    runtime: 'experimental-edge',
+  },
 }
 
 export default nextConfig
