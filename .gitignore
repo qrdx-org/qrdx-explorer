@@ -46,5 +46,8 @@ next-env.d.ts
 pnpm-lock.yaml
 .pnpm-store
 
+# opennextjs
+.open-next
+
 # submodules since only using for ref rn
 #/submodules/*
