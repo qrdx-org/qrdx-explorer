@@ -5,6 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "bun next dev",
+    "dev:node": "bash scripts/dev-with-node.sh",
+    "node:stop": "bash submodules/qrdx-chain/scripts/testnet.sh stop",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
