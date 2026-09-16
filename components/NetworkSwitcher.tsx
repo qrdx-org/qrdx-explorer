@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { Check, Network } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -12,240 +13,149 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Network, Check } from 'lucide-react'
+import {
+  DEFAULT_NETWORKS,
+  getActiveNetwork,
+  getNodeHealth,
+  NETWORK_STORAGE_KEY,
+  normalizeNetworkConfig,
+  rpcCall,
+  type NetworkConfig,
+  type NetworkType,
+} from '@/lib/qrdx'
 
-type NetworkType = 'mainnet' | 'testnet' | 'local'
-
-interface NetworkConfig {
-  type: NetworkType
-  name: string
-  rpcUrl: string
-  nodeApiUrl: string
-  chainId: number
+const CUSTOM_CONFIGS_KEY = 'qrdx-custom-configs'
+const NETWORK_ORDER: NetworkType[] = ['mainnet', 'testnet', 'local']
+const DESCRIPTIONS: Record<NetworkType, string> = {
+  mainnet: 'Production network',
+  testnet: 'Public test network',
+  local: 'Your own node',
 }
 
-interface NetworkStatus {
-  rpcOnline: boolean
-  nodeApiOnline: boolean
+interface ProbeResult {
   checking: boolean
+  online: boolean
+  ready: boolean
+  version: string | null
+  height: number | null
+  rpc: boolean
+  chainId: number | null
 }
 
-const NETWORKS: Record<NetworkType, NetworkConfig> = {
-  mainnet: {
-    type: 'mainnet',
-    name: 'QRDX Mainnet',
-    rpcUrl: 'https://rpc.qrdx.org',
-    nodeApiUrl: 'https://node.qrdx.org',
-    chainId: 1337,
-  },
-  testnet: {
-    type: 'testnet',
-    name: 'QRDX Testnet',
-    rpcUrl: 'https://rpc.test.qrdx.org',
-    nodeApiUrl: 'https://node.test.qrdx.org',
-    chainId: 31337,
-  },
-  local: {
-    type: 'local',
-    name: 'Local Network',
-    rpcUrl: 'http://localhost:3007',
-    nodeApiUrl: 'http://localhost:3007',
-    chainId: 31337,
-  },
+const IDLE_PROBE: ProbeResult = { checking: false, online: false, ready: false, version: null, height: null, rpc: false, chainId: null }
+
+function loadCustomConfigs(): Record<NetworkType, NetworkConfig> {
+  try {
+    const saved = localStorage.getItem(CUSTOM_CONFIGS_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved) as Partial<Record<NetworkType, NetworkConfig>>
+      return Object.fromEntries(
+        NETWORK_ORDER.map((type) => [
+          type,
+          parsed[type]?.nodeApiUrl ? normalizeNetworkConfig({ ...DEFAULT_NETWORKS[type], ...parsed[type]!, type }) : DEFAULT_NETWORKS[type],
+        ]),
+      ) as Record<NetworkType, NetworkConfig>
+    }
+  } catch {
+    // ignore corrupt storage
+  }
+  return { ...DEFAULT_NETWORKS }
 }
 
 export default function NetworkSwitcher() {
   const [open, setOpen] = useState(false)
-  const [selectedNetwork, setSelectedNetwork] = useState<NetworkType>('mainnet')
-  const [customConfigs, setCustomConfigs] = useState<Record<NetworkType, NetworkConfig>>(NETWORKS)
-  const [editingNetwork, setEditingNetwork] = useState<NetworkType | null>(null)
-  const [networkStatus, setNetworkStatus] = useState<Record<NetworkType, NetworkStatus>>({
-    mainnet: { rpcOnline: false, nodeApiOnline: false, checking: false },
-    testnet: { rpcOnline: false, nodeApiOnline: false, checking: false },
-    local: { rpcOnline: false, nodeApiOnline: false, checking: false },
-  })
-
-  // Check network status
-  const checkNetworkStatus = async (network: NetworkType) => {
-    const config = customConfigs[network]
-    setNetworkStatus(prev => ({
-      ...prev,
-      [network]: { ...prev[network], checking: true }
-    }))
-
-    let rpcOnline = false
-    let nodeApiOnline = false
-
-    // Check RPC endpoint
-    try {
-      const rpcResponse = await fetch(config.rpcUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_blockNumber', params: [], id: 1 }),
-        signal: AbortSignal.timeout(5000),
-      })
-      rpcOnline = rpcResponse.ok
-    } catch (error) {
-      rpcOnline = false
-    }
-
-    // Check Node API endpoint
-    try {
-      const nodeResponse = await fetch(`${config.nodeApiUrl}/get_status`, {
-        signal: AbortSignal.timeout(5000),
-      })
-      nodeApiOnline = nodeResponse.ok
-    } catch (error) {
-      nodeApiOnline = false
-    }
-
-    setNetworkStatus(prev => ({
-      ...prev,
-      [network]: { rpcOnline, nodeApiOnline, checking: false }
-    }))
-  }
+  const [selected, setSelected] = useState<NetworkType>('local')
+  const [configs, setConfigs] = useState<Record<NetworkType, NetworkConfig>>(DEFAULT_NETWORKS)
+  const [editing, setEditing] = useState<NetworkType | null>(null)
+  const [probes, setProbes] = useState<Record<NetworkType, ProbeResult>>({ mainnet: IDLE_PROBE, testnet: IDLE_PROBE, local: IDLE_PROBE })
 
   useEffect(() => {
-    // Load custom configurations from localStorage first
-    const customSaved = localStorage.getItem('qrdx-custom-configs')
-    if (customSaved) {
-      try {
-        const customData = JSON.parse(customSaved)
-        setCustomConfigs(customData)
-      } catch (e) {
-        console.error('Failed to parse custom configs:', e)
-      }
-    }
+    const custom = loadCustomConfigs()
 
-    // Check URL parameters first
+    // Shared links carry ?network=…&api=… (see ShareAddressDialog).
     const params = new URLSearchParams(window.location.search)
-    const networkParam = params.get('network')
-    const rpcParam = params.get('rpc')
-    const apiParam = params.get('api')
-
-    if (networkParam && (networkParam === 'mainnet' || networkParam === 'testnet' || networkParam === 'local')) {
-      const networkType = networkParam as NetworkType
-      const baseConfig = customSaved ? JSON.parse(customSaved)[networkType] || NETWORKS[networkType] : NETWORKS[networkType]
-      const config = { ...baseConfig }
-      
-      // For local network, allow custom RPC and API from URL
-      if (networkType === 'local' && (rpcParam || apiParam)) {
-        if (rpcParam) config.rpcUrl = rpcParam
-        if (apiParam) config.nodeApiUrl = apiParam
-      }
-      
-      setSelectedNetwork(networkType)
-      if (customSaved) {
-        const customData = JSON.parse(customSaved)
-        customData[networkType] = config
-        setCustomConfigs(customData)
-        localStorage.setItem('qrdx-custom-configs', JSON.stringify(customData))
-      }
-      localStorage.setItem('qrdx-network', JSON.stringify(config))
-      return
+    const networkParam = params.get('network') as NetworkType | null
+    if (networkParam && NETWORK_ORDER.includes(networkParam)) {
+      const api = params.get('api')
+      const rpc = params.get('rpc')
+      const config = normalizeNetworkConfig({
+        ...custom[networkParam],
+        ...(api ? { nodeApiUrl: api } : {}),
+        ...(rpc ? { rpcUrl: rpc } : { rpcUrl: api ? '' : custom[networkParam].rpcUrl }),
+        type: networkParam,
+      })
+      custom[networkParam] = config
+      localStorage.setItem(CUSTOM_CONFIGS_KEY, JSON.stringify(custom))
+      localStorage.setItem(NETWORK_STORAGE_KEY, JSON.stringify(config))
     }
 
-    // Load saved network from localStorage
-    const saved = localStorage.getItem('qrdx-network')
-    if (saved) {
-      try {
-        const data = JSON.parse(saved)
-        if (data.type && NETWORKS[data.type as NetworkType]) {
-          setSelectedNetwork(data.type)
-        }
-      } catch (e) {
-        console.error('Failed to parse network config:', e)
-      }
-    }
+    setConfigs(custom)
+    setSelected(getActiveNetwork().type)
+  }, [])
+
+  const probe = useCallback(async (type: NetworkType, config: NetworkConfig) => {
+    setProbes((prev) => ({ ...prev, [type]: { ...prev[type], checking: true } }))
+    const [health, chainId] = await Promise.all([
+      getNodeHealth(config.nodeApiUrl),
+      rpcCall<string>('eth_chainId', [], { baseUrl: config.nodeApiUrl, timeoutMs: 6000 }).catch(() => null),
+    ])
+    setProbes((prev) => ({
+      ...prev,
+      [type]: {
+        checking: false,
+        online: health.online,
+        ready: health.ready,
+        version: health.version,
+        height: health.readyHeight,
+        rpc: chainId != null,
+        chainId: chainId ? parseInt(chainId, 16) : null,
+      },
+    }))
   }, [])
 
   useEffect(() => {
-    // Check all network statuses when dialog opens
-    if (open) {
-      Object.keys(NETWORKS).forEach(network => {
-        checkNetworkStatus(network as NetworkType)
-      })
-    }
+    if (!open) return
+    NETWORK_ORDER.forEach((type) => void probe(type, configs[type]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  const handleNetworkChange = (network: NetworkType) => {
-    const config = customConfigs[network]
-    
-    // Save to localStorage before reload
-    localStorage.setItem('qrdx-network', JSON.stringify(config))
-    localStorage.setItem('qrdx-custom-configs', JSON.stringify(customConfigs))
-    
-    setSelectedNetwork(network)
-    
-    // Update environment variables for the app
-    if (typeof window !== 'undefined') {
-      const w = window as any
-      w.__QRDX_RPC_URL__ = config.rpcUrl
-      w.__QRDX_NODE_URL__ = config.nodeApiUrl
-    }
-    
+  const connect = (type: NetworkType) => {
+    const config = normalizeNetworkConfig(configs[type])
+    const nextConfigs = { ...configs, [type]: config }
+    localStorage.setItem(CUSTOM_CONFIGS_KEY, JSON.stringify(nextConfigs))
+    localStorage.setItem(NETWORK_STORAGE_KEY, JSON.stringify(config))
+    setSelected(type)
     setOpen(false)
-    
-    // Small delay to ensure localStorage is written
-    setTimeout(() => {
-      window.location.reload()
-    }, 50)
+    // Drop share-link params so the stored selection wins after reload.
+    const url = new URL(window.location.href)
+    ;['network', 'api', 'rpc'].forEach((p) => url.searchParams.delete(p))
+    window.location.replace(url.toString())
   }
 
-  const handleCustomConfigChange = (network: NetworkType, field: 'rpcUrl' | 'nodeApiUrl', value: string) => {
-    setCustomConfigs(prev => ({
-      ...prev,
-      [network]: {
-        ...prev[network],
-        [field]: value
-      }
-    }))
+  const updateUrl = (type: NetworkType, field: 'nodeApiUrl' | 'rpcUrl', value: string) => {
+    setConfigs((prev) => ({ ...prev, [type]: { ...prev[type], [field]: value } }))
   }
 
-  const resetToDefaults = (network: NetworkType) => {
-    setCustomConfigs(prev => ({
-      ...prev,
-      [network]: NETWORKS[network]
-    }))
-  }
-
-  const currentNetwork = customConfigs[selectedNetwork]
-
-  const getStatusIndicator = (status: NetworkStatus) => {
-    if (status.checking) {
+  const statusBadge = (result: ProbeResult) => {
+    if (result.checking) {
       return (
-        <div className="flex items-center gap-1.5">
-          <div className="h-2 w-2 rounded-full bg-gray-400 animate-pulse" />
-          <span className="text-xs text-muted-foreground">Checking...</span>
-        </div>
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="h-2 w-2 rounded-full bg-gray-400 animate-pulse" /> Checking…
+        </span>
       )
     }
-
-    const bothOnline = status.rpcOnline && status.nodeApiOnline
-
-    if (bothOnline) {
+    if (!result.online) {
       return (
-        <div className="flex items-center gap-1.5">
-          <div className="h-2 w-2 rounded-full bg-green-500" />
-          <span className="text-xs text-green-600 dark:text-green-400">Online</span>
-        </div>
+        <span className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
+          <span className="h-2 w-2 rounded-full bg-red-500" /> Offline
+        </span>
       )
     }
-
-    if (status.rpcOnline || status.nodeApiOnline) {
-      return (
-        <div className="flex items-center gap-1.5">
-          <div className="h-2 w-2 rounded-full bg-yellow-500" />
-          <span className="text-xs text-yellow-600 dark:text-yellow-400">Partial</span>
-        </div>
-      )
-    }
-
     return (
-      <div className="flex items-center gap-1.5">
-        <div className="h-2 w-2 rounded-full bg-red-500" />
-        <span className="text-xs text-red-600 dark:text-red-400">Offline</span>
-      </div>
+      <span className={`flex items-center gap-1.5 text-xs ${result.ready ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
+        <span className={`h-2 w-2 rounded-full ${result.ready ? 'bg-green-500' : 'bg-yellow-500'}`} />
+        {result.ready ? 'Online' : 'Syncing'}
+      </span>
     )
   }
 
@@ -254,210 +164,76 @@ export default function NetworkSwitcher() {
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2">
           <Network className="h-4 w-4" />
-          <span className="hidden sm:inline">{currentNetwork.name}</span>
+          <span className="hidden sm:inline">{configs[selected].name}</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Select Network</DialogTitle>
-          <DialogDescription>
-            Choose which QRDX network to connect to
-          </DialogDescription>
+          <DialogDescription>Choose which QRDX node the explorer reads from</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          {/* Mainnet */}
-          <button
-            onClick={() => handleNetworkChange('mainnet')}
-            className={`flex flex-col gap-2 p-4 rounded-lg border-2 transition-colors ${
-              selectedNetwork === 'mainnet' 
-                ? 'border-primary bg-primary/5' 
-                : 'border-border hover:border-primary/50'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="text-left">
-                <div className="font-semibold">QRDX Mainnet</div>
-                <div className="text-sm text-muted-foreground">Production network</div>
-              </div>
-              {selectedNetwork === 'mainnet' && (
-                <Check className="h-5 w-5 text-primary" />
-              )}
-            </div>
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Chain ID: 1337</span>
-              {getStatusIndicator(networkStatus.mainnet)}
-            </div>
-          </button>
+        <div className="grid gap-3 py-2">
+          {NETWORK_ORDER.map((type) => {
+            const config = configs[type]
+            const result = probes[type]
+            const isSelected = selected === type
+            return (
+              <div key={type} className={`p-4 rounded-lg border-2 ${isSelected ? 'border-primary bg-primary/5' : 'border-border'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <div className="font-semibold flex items-center gap-2">
+                      {config.name}
+                      {isSelected && <Check className="h-4 w-4 text-primary" />}
+                    </div>
+                    <div className="text-sm text-muted-foreground">{DESCRIPTIONS[type]}</div>
+                  </div>
+                  {statusBadge(result)}
+                </div>
+                <div className="text-xs text-muted-foreground font-mono break-all mb-2">{config.nodeApiUrl}</div>
+                {result.online && !result.checking && (
+                  <div className="text-xs text-muted-foreground mb-3">
+                    {result.version && `v${result.version}`}
+                    {result.height != null && ` · height ${result.height.toLocaleString()}`}
+                    {result.rpc ? ` · JSON-RPC chain ${result.chainId}` : ' · JSON-RPC disabled'}
+                  </div>
+                )}
 
-          {/* Testnet */}
-          <div className={`p-4 rounded-lg border-2 ${
-            selectedNetwork === 'testnet' 
-              ? 'border-primary bg-primary/5' 
-              : 'border-border'
-          }`}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-left flex-1">
-                <div className="font-semibold">QRDX Testnet</div>
-                <div className="text-sm text-muted-foreground">Test network</div>
-              </div>
-              <div className="flex items-center gap-2">
-                {getStatusIndicator(networkStatus.testnet)}
-                {selectedNetwork === 'testnet' && (
-                  <Check className="h-5 w-5 text-primary" />
+                {editing === type ? (
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor={`${type}-api`} className="text-xs">Node API URL</Label>
+                      <Input id={`${type}-api`} type="url" value={config.nodeApiUrl} onChange={(e) => updateUrl(type, 'nodeApiUrl', e.target.value)} className="mt-1" placeholder="http://127.0.0.1:3007" />
+                    </div>
+                    <div>
+                      <Label htmlFor={`${type}-rpc`} className="text-xs">JSON-RPC URL (optional)</Label>
+                      <Input id={`${type}-rpc`} type="url" value={config.rpcUrl} onChange={(e) => updateUrl(type, 'rpcUrl', e.target.value)} className="mt-1" placeholder={`${config.nodeApiUrl}/rpc`} />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" className="flex-1" onClick={() => connect(type)}>Connect</Button>
+                      <Button size="sm" variant="outline" onClick={() => void probe(type, normalizeNetworkConfig(config))}>Test</Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setConfigs((prev) => ({ ...prev, [type]: DEFAULT_NETWORKS[type] }))
+                          setEditing(null)
+                        }}
+                      >
+                        Reset
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button size="sm" variant={isSelected ? 'default' : 'outline'} className="flex-1" onClick={() => connect(type)}>
+                      {isSelected ? 'Reconnect' : 'Connect'}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing(type)}>Edit</Button>
+                  </div>
                 )}
               </div>
-            </div>
-            
-            {editingNetwork === 'testnet' ? (
-              <div className="space-y-3">
-                <div>
-                  <Label htmlFor="testnet-rpc" className="text-xs">RPC URL</Label>
-                  <Input
-                    id="testnet-rpc"
-                    type="url"
-                    value={customConfigs.testnet.rpcUrl}
-                    onChange={(e) => handleCustomConfigChange('testnet', 'rpcUrl', e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="testnet-api" className="text-xs">Node API URL</Label>
-                  <Input
-                    id="testnet-api"
-                    type="url"
-                    value={customConfigs.testnet.nodeApiUrl}
-                    onChange={(e) => handleCustomConfigChange('testnet', 'nodeApiUrl', e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    onClick={() => {
-                      handleNetworkChange('testnet')
-                      setEditingNetwork(null)
-                    }}
-                    className="flex-1"
-                    size="sm"
-                  >
-                    Connect
-                  </Button>
-                  <Button 
-                    onClick={() => {
-                      resetToDefaults('testnet')
-                      setEditingNetwork(null)
-                    }}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Reset
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Button 
-                  onClick={() => handleNetworkChange('testnet')}
-                  className="flex-1"
-                  size="sm"
-                  variant="outline"
-                >
-                  Connect
-                </Button>
-                <Button 
-                  onClick={() => setEditingNetwork('testnet')}
-                  size="sm"
-                  variant="ghost"
-                >
-                  Edit
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Local Network */}
-          <div className={`p-4 rounded-lg border-2 ${
-            selectedNetwork === 'local' 
-              ? 'border-primary bg-primary/5' 
-              : 'border-border'
-          }`}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-left flex-1">
-                <div className="font-semibold">Local Network</div>
-                <div className="text-sm text-muted-foreground">Local development</div>
-              </div>
-              <div className="flex items-center gap-2">
-                {getStatusIndicator(networkStatus.local)}
-                {selectedNetwork === 'local' && (
-                  <Check className="h-5 w-5 text-primary" />
-                )}
-              </div>
-            </div>
-            
-            {editingNetwork === 'local' ? (
-              <div className="space-y-3">
-                <div>
-                  <Label htmlFor="local-rpc" className="text-xs">RPC URL</Label>
-                  <Input
-                    id="local-rpc"
-                    type="url"
-                    value={customConfigs.local.rpcUrl}
-                    onChange={(e) => handleCustomConfigChange('local', 'rpcUrl', e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="local-api" className="text-xs">Node API URL</Label>
-                  <Input
-                    id="local-api"
-                    type="url"
-                    value={customConfigs.local.nodeApiUrl}
-                    onChange={(e) => handleCustomConfigChange('local', 'nodeApiUrl', e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    onClick={() => {
-                      handleNetworkChange('local')
-                      setEditingNetwork(null)
-                    }}
-                    className="flex-1"
-                    size="sm"
-                  >
-                    Connect
-                  </Button>
-                  <Button 
-                    onClick={() => {
-                      resetToDefaults('local')
-                      setEditingNetwork(null)
-                    }}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Reset
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Button 
-                  onClick={() => handleNetworkChange('local')}
-                  className="flex-1"
-                  size="sm"
-                  variant="outline"
-                >
-                  Connect
-                </Button>
-                <Button 
-                  onClick={() => setEditingNetwork('local')}
-                  size="sm"
-                  variant="ghost"
-                >
-                  Edit
-                </Button>
-              </div>
-            )}
-          </div>
+            )
+          })}
         </div>
       </DialogContent>
     </Dialog>

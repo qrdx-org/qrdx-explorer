@@ -26,6 +26,8 @@
   "license": "ISC",
   "packageManager": "pnpm@10.6.4",
   "dependencies": {
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
     "@opennextjs/cloudflare": "^1.16.2",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.15",

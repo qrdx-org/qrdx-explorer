@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { getCurrentNetworkConfig } from '@/lib/network-utils'
+import { DEFAULT_NETWORKS, getActiveNetwork } from '@/lib/qrdx'
 
 interface ShareAddressDialogProps {
   address: string
@@ -24,32 +24,20 @@ export default function ShareAddressDialog({ address }: ShareAddressDialogProps)
   const [copied, setCopied] = useState(false)
 
   const getShareUrl = () => {
-    const config = getCurrentNetworkConfig()
     if (typeof window === 'undefined') return ''
+    const config = getActiveNetwork()
+    const url = new URL(`${window.location.origin}/address/${address}`)
 
-    const baseUrl = `${window.location.origin}/address/${address}`
-    
-    if (!config || config.type === 'mainnet') {
-      // Don't add network param for mainnet (default)
-      return baseUrl
-    }
-
-    const url = new URL(baseUrl)
-    url.searchParams.set('network', config.type)
-
-    // Add custom endpoints for local network
-    if (config.type === 'local') {
-      const defaultRpc = 'http://localhost:3007'
-      const defaultApi = 'http://localhost:3007'
-      
-      if (config.rpcUrl !== defaultRpc) {
-        url.searchParams.set('rpc', config.rpcUrl)
-      }
-      if (config.nodeApiUrl !== defaultApi) {
+    // Carry the node selection so the recipient reads from the same network.
+    if (config.type !== 'mainnet' || config.nodeApiUrl !== DEFAULT_NETWORKS.mainnet.nodeApiUrl) {
+      url.searchParams.set('network', config.type)
+      if (config.nodeApiUrl !== DEFAULT_NETWORKS[config.type].nodeApiUrl) {
         url.searchParams.set('api', config.nodeApiUrl)
       }
+      if (config.rpcUrl !== `${config.nodeApiUrl}/rpc`) {
+        url.searchParams.set('rpc', config.rpcUrl)
+      }
     }
-
     return url.toString()
   }
 

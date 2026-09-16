@@ -34,8 +34,13 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/contracts" className="text-muted-foreground hover:text-primary">
-                  Smart Contracts
+                <Link href="/validators" className="text-muted-foreground hover:text-primary">
+                  Validators
+                </Link>
+              </li>
+              <li>
+                <Link href="/network" className="text-muted-foreground hover:text-primary">
+                  Network Status
                 </Link>
               </li>
             </ul>

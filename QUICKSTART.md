@@ -40,61 +40,29 @@ GET /api/price/QRDX
 GET /api/price/0x... // by address
 ```
 
-## Using the API Client
+## Using the Node Integration
 
 ```typescript
-import { getAddressInfo, getTransaction, getAddressTokens } from '@/lib/api-client'
+import { getAddress, getAddressActivity, getTransaction, getLatestBlocks } from '@/lib/qrdx'
 import { getTokenPrice } from '@/lib/pricing-api'
-import { calculateTokenPositions } from '@/lib/token-positions'
 
-// Fetch address data
-const { data, error } = await getAddressInfo('0x...')
-
-// Fetch transaction
-const tx = await getTransaction('0x...')
-
-// Fetch token price
+const account = await getAddress('0xPQ…')
+const history = await getAddressActivity(account.address, { spendableOutputs: account.spendableOutputs })
+const { transaction } = await getTransaction('0x…')
+const blocks = await getLatestBlocks(10)
 const price = await getTokenPrice('QRDX')
-
-// Calculate positions
-const positions = calculateTokenPositions(
-  transactions,
-  userAddress,
-  tokenAddress,
-  decimals
-)
 ```
 
-## Key Features
-
-### ✅ Working Now
-- Address tracking with real balance
-- Transaction history
-- Deterministic identicons
-- Real-time pricing (when API available)
-- Position tracking from transaction logs
-- Error handling and loading states
-
-### 🔴 Needs Backend Implementation
-- `/get_address_tokens` - List tokens owned by address
-- `/get_token_info` - Get token metadata
-- Ensure transaction logs are included in `/get_transaction`
+See [docs/NODE_INTEGRATION.md](docs/NODE_INTEGRATION.md) for the full endpoint mapping and known node limitations.
 
 ## File Structure
 
 ```
-lib/
-  api-client.ts        # QRDX Node API client
-  pricing-api.ts       # Token pricing
-  token-positions.ts   # Position calculator
-  types.ts            # TypeScript types
-  
-app/
-  address/[address]/  # Address page
-  tx/[hash]/         # Transaction page
-  
-docs/
-  BACKEND_IMPLEMENTATION.md  # Backend guide
+lib/qrdx/            # Node client: REST, JSON-RPC, WebSocket/SSE stream, decoders
+lib/format.ts        # Display formatting
+lib/pricing-api.ts   # Token pricing
+components/explorer/ # ChainProvider (live chain context) and shared explorer UI
+app/                 # Pages: blocks, block, transactions, tx, address, addresses, validators, network
 ```
 
 ## Testing

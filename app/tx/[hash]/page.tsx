@@ -1,102 +1,289 @@
 'use client'
 
-import { use, useState, useEffect } from 'react'
+import { use, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Copy, ExternalLink, ArrowRight, CheckCircle, XCircle, Clock, Loader2, AlertCircle } from 'lucide-react'
+import { ArrowRight, CheckCircle2, ChevronLeft, Clock, Search, XCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import AddressAvatar from '@/components/AddressAvatar'
-import { formatAddress, formatTimestamp, formatUSD } from '@/lib/mock-data'
-import { getTransaction, type TransactionResponse } from '@/lib/api-client'
-import { getTokenPriceWithFallback } from '@/lib/pricing-api'
-import { updateUrlWithNetwork, getCurrentNetworkConfig, type NetworkType } from '@/lib/network-utils'
-import { weiToQRDX } from '@/lib/utils'
+import { useChain } from '@/components/explorer/ChainProvider'
+import {
+  AddressLink,
+  BlockLink,
+  CopyButton,
+  DetailRow,
+  ErrorState,
+  LoadingState,
+  NetworkModeBadge,
+  TimeAgo,
+  TxKindBadge,
+  TxLink,
+} from '@/components/explorer/common'
+import {
+  EVM_DECIMALS,
+  formatUnits,
+  getBlock,
+  getTransaction,
+  NATIVE_DECIMALS,
+  strip0x,
+  type ExplorerTransaction,
+  type TransactionLookup,
+} from '@/lib/qrdx'
+import { formatAmount, formatDateTime, formatQrdx } from '@/lib/format'
+import { getTokenPrice } from '@/lib/pricing-api'
 
 interface PageProps {
   params: Promise<{ hash: string }>
 }
 
+function HexBlock({ value }: { value: string }) {
+  return (
+    <div className="relative">
+      <pre className="font-mono text-xs bg-muted/50 rounded-md p-3 whitespace-pre-wrap break-all max-h-64 overflow-auto">{value}</pre>
+      <div className="absolute top-1 right-1">
+        <CopyButton value={value} />
+      </div>
+    </div>
+  )
+}
+
+function EvmDetails({ tx }: { tx: ExplorerTransaction }) {
+  const evm = tx.evm!
+  const typeLabel = evm.type === 2 ? 'EIP-1559 (type 2)' : evm.type === 1 ? 'EIP-2930 (type 1)' : 'Legacy (type 0)'
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle>EVM Execution</CardTitle>
+        <CardDescription>Decoded from the raw signed transaction in the block&apos;s EVM section</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <DetailRow label="Transaction Type">{typeLabel}</DetailRow>
+        <DetailRow label="Chain ID">{evm.chainId != null ? evm.chainId.toString() : 'Unprotected (pre-EIP-155)'}</DetailRow>
+        <DetailRow label="Nonce">{evm.nonce.toString()}</DetailRow>
+        <DetailRow label="Gas Limit">{evm.gasLimit.toLocaleString()}</DetailRow>
+        <DetailRow label={evm.type === 2 ? 'Max Fee Per Gas' : 'Gas Price'}>{formatUnits(evm.gasPrice, 9)} Gwei</DetailRow>
+        {evm.maxPriorityFeePerGas != null && (
+          <DetailRow label="Max Priority Fee">{formatUnits(evm.maxPriorityFeePerGas, 9)} Gwei</DetailRow>
+        )}
+        {evm.createdContract && (
+          <DetailRow label="Contract Created"><AddressLink address={evm.createdContract} full copy /></DetailRow>
+        )}
+        <DetailRow label="Value (wei)"><span className="font-mono">{evm.value.toString()}</span></DetailRow>
+        <DetailRow label="Input Data">
+          {evm.input === '0x' ? <span className="text-muted-foreground">None</span> : <HexBlock value={evm.input} />}
+        </DetailRow>
+        <DetailRow label="Raw Transaction"><HexBlock value={evm.raw} /></DetailRow>
+      </CardContent>
+    </Card>
+  )
+}
+
+function NativeDetails({ tx }: { tx: ExplorerTransaction }) {
+  const native = tx.native!
+  if (native.kind === 'genesis') {
+    return (
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Genesis Record</CardTitle>
+          <CardDescription>Allocation created when the chain was initialised</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <DetailRow label="Type">{native.genesisType}</DetailRow>
+          {native.label && <DetailRow label="Label">{native.label}</DetailRow>}
+          {native.category && <DetailRow label="Category">{native.category}</DetailRow>}
+          {native.controller && <DetailRow label="Controller"><AddressLink address={native.controller} full copy /></DetailRow>}
+          <DetailRow label="Allocation Index">{native.index}</DetailRow>
+        </CardContent>
+      </Card>
+    )
+  }
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle>{native.kind === 'coinbase' ? 'Coinbase' : 'UTXO Transfer'}</CardTitle>
+        <CardDescription>Decoded native transaction (format v{native.version})</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-6">
+        {native.kind === 'transfer' && (
+          <div>
+            <h4 className="text-sm font-medium mb-2">Inputs ({native.inputs.length})</h4>
+            <div className="space-y-1">
+              {native.inputs.map((input) => (
+                <div key={`${input.txHash}:${input.index}`} className="flex items-center gap-2 text-sm">
+                  <TxLink hash={input.txHash} />
+                  <span className="text-muted-foreground">output #{input.index}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div>
+          <h4 className="text-sm font-medium mb-2">Outputs ({native.outputs.length})</h4>
+          <div className="space-y-1">
+            {native.outputs.map((output, i) => (
+              <div key={`${output.address}-${i}`} className="flex items-center justify-between gap-2 text-sm">
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="text-muted-foreground">#{i}</span>
+                  <AddressLink address={output.address} />
+                </span>
+                <span className="font-mono">{formatQrdx(formatUnits(output.amount, NATIVE_DECIMALS))}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        {native.kind === 'transfer' && (
+          <>
+            {native.message && <DetailRow label="Message">{native.message}</DetailRow>}
+            <DetailRow label="Signatures">{native.signatureCount}</DetailRow>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ExchangeDetails({ tx }: { tx: ExplorerTransaction }) {
+  const ex = tx.exchange!
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle>Exchange Operation</CardTitle>
+        <CardDescription>Protocol-level exchange transaction (PQ-signed)</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <DetailRow label="Operation">{tx.method} (op {ex.op_type})</DetailRow>
+        <DetailRow label="Sender Nonce">{ex.nonce}</DetailRow>
+        <DetailRow label="Gas Limit">{ex.gas_limit?.toLocaleString()}</DetailRow>
+        <DetailRow label="Gas Price">{ex.gas_price} QRDX</DetailRow>
+        <DetailRow label="Submitted">{ex.timestamp ? formatDateTime(Math.floor(ex.timestamp)) : '—'}</DetailRow>
+        <DetailRow label="Parameters"><HexBlock value={JSON.stringify(ex.params, null, 2)} /></DetailRow>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ContractDetails({ tx }: { tx: ExplorerTransaction }) {
+  const contract = tx.contract as Record<string, any>
+  const receipt = contract.receipt as Record<string, any> | null
+  const logs: any[] = receipt?.logs ?? []
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle>Contract Execution</CardTitle>
+        <CardDescription>From eth_getTransactionByHash / eth_getTransactionReceipt</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <DetailRow label="Nonce">{contract.nonce ? parseInt(contract.nonce, 16) : '—'}</DetailRow>
+        <DetailRow label="Gas Limit">{contract.gas ? parseInt(contract.gas, 16).toLocaleString() : '—'}</DetailRow>
+        <DetailRow label="Gas Used">{receipt?.gasUsed ? parseInt(receipt.gasUsed, 16).toLocaleString() : '—'}</DetailRow>
+        {receipt?.contractAddress && <DetailRow label="Contract Created"><AddressLink address={receipt.contractAddress} full copy /></DetailRow>}
+        <DetailRow label="Input Data">
+          {!contract.input || contract.input === '0x' ? <span className="text-muted-foreground">None</span> : <HexBlock value={contract.input} />}
+        </DetailRow>
+        <DetailRow label={`Logs (${logs.length})`}>
+          {logs.length === 0 ? (
+            <span className="text-muted-foreground">No events emitted</span>
+          ) : (
+            <div className="space-y-3">
+              {logs.map((log, i) => (
+                <div key={i} className="rounded-md border p-3 space-y-1">
+                  <div className="text-xs text-muted-foreground">Log #{parseInt(log.logIndex ?? '0x0', 16)} · <AddressLink address={log.address} /></div>
+                  {(log.topics ?? []).map((topic: string, t: number) => (
+                    <div key={t} className="font-mono text-xs break-all">[{t}] {topic}</div>
+                  ))}
+                  {log.data && log.data !== '0x' && <div className="font-mono text-xs break-all text-muted-foreground">data: {log.data}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </DetailRow>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function TransactionPage({ params }: PageProps) {
   const { hash } = use(params)
-  const [transaction, setTransaction] = useState<TransactionResponse | null>(null)
+  const { height: tip, finalizedEpoch, subscribeBlocks } = useChain()
+  const [lookup, setLookup] = useState<TransactionLookup | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [qrdxPrice, setQrdxPrice] = useState(0)
-  const [copiedField, setCopiedField] = useState<string | null>(null)
-  const [currentNetwork, setCurrentNetwork] = useState<NetworkType>('mainnet')
+  const [blockEpoch, setBlockEpoch] = useState<number | null>(null)
+  const [usdPrice, setUsdPrice] = useState<number | null>(null)
+  const [nonce, setNonce] = useState(0)
 
-  // Update URL with network parameters and get current network
   useEffect(() => {
-    updateUrlWithNetwork()
-    const config = getCurrentNetworkConfig()
-    if (config) {
-      setCurrentNetwork(config.type)
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    getTransaction(hash)
+      .then((result) => !cancelled && setLookup(result))
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Lookup failed'))
+      .finally(() => !cancelled && setLoading(false))
+    return () => {
+      cancelled = true
     }
+  }, [hash, nonce])
+
+  // If the tx is not on chain yet, watch each new block for it.
+  const notFound = !loading && !error && lookup && !lookup.transaction
+  useEffect(() => {
+    if (!notFound) return
+    const needle = strip0x(hash).toLowerCase()
+    return subscribeBlocks(async (event) => {
+      const block = await getBlock(event.height).catch(() => null)
+      const match = block?.transactions.find((t) => strip0x(t.hash).toLowerCase() === needle)
+      if (match) setLookup({ transaction: match, scanned: null, scanLimited: false })
+    })
+  }, [notFound, hash, subscribeBlocks])
+
+  const tx = lookup?.transaction ?? null
+
+  useEffect(() => {
+    if (tx?.blockHeight == null) return
+    getBlock(tx.blockHeight).then((b) => setBlockEpoch(b?.epoch ?? null)).catch(() => undefined)
+  }, [tx?.blockHeight])
+
+  useEffect(() => {
+    getTokenPrice('QRDX').then((p) => setUsdPrice(p?.price_usd ?? null)).catch(() => undefined)
   }, [])
 
-  useEffect(() => {
-    async function fetchTransaction() {
-      setLoading(true)
-      setError(null)
-
-      try {
-        const response = await getTransaction(hash)
-        
-        if (response.error || !response.data) {
-          throw new Error(response.error || 'Transaction not found')
-        }
-
-        setTransaction(response.data)
-
-        // Fetch QRDX price for USD conversion
-        const price = await getTokenPriceWithFallback('QRDX')
-        setQrdxPrice(price)
-      } catch (err) {
-        console.error('Error fetching transaction:', err)
-        setError(err instanceof Error ? err.message : 'Unknown error occurred')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchTransaction()
-  }, [hash])
-
-  const copyToClipboard = (text: string, field: string) => {
-    navigator.clipboard.writeText(text)
-    setCopiedField(field)
-    setTimeout(() => setCopiedField(null), 2000)
-  }
-
-  // Loading state
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-            <p className="text-muted-foreground">Loading transaction...</p>
-          </div>
-        </div>
+        <LoadingState label="Locating transaction…" />
       </div>
     )
   }
 
-  // Error state
-  if (error || !transaction) {
+  if (error) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <Card className="border-red-500/50 bg-red-500/10">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-8 w-8 text-red-500" />
-              <div>
-                <h3 className="font-semibold text-lg mb-1">Transaction Not Found</h3>
-                <p className="text-sm text-muted-foreground">{error || 'Transaction not found'}</p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Make sure the QRDX node is running at {process.env.NEXT_PUBLIC_QRDX_NODE_URL || 'http://127.0.0.1:3007'}
+        <ErrorState title="Error loading transaction" error={error} onRetry={() => setNonce((n) => n + 1)} />
+      </div>
+    )
+  }
+
+  if (!tx) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card>
+          <CardContent className="pt-6 py-12 text-center">
+            <Search className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <h2 className="text-xl font-semibold mb-2">Transaction not found</h2>
+            <p className="font-mono text-sm break-all text-muted-foreground mb-4">{hash}</p>
+            <div className="text-sm text-muted-foreground max-w-xl mx-auto space-y-2">
+              <p>
+                Checked the native transaction index, contract receipts, genesis allocations
+                {lookup?.scanned ? ` and EVM/exchange sections of blocks #${lookup.scanned.from.toLocaleString()}–#${lookup.scanned.to.toLocaleString()}` : ''}.
+              </p>
+              {lookup?.scanLimited && (
+                <p>
+                  The scan was limited by the node&apos;s per-client query budget. The node does not index included EVM
+                  transactions by hash, so older transactions may not be locatable right now.
                 </p>
-              </div>
+              )}
+              <p className="flex items-center justify-center gap-2">
+                <Clock className="h-4 w-4 animate-pulse" /> Watching new blocks — this page updates if the transaction is included.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -104,277 +291,92 @@ export default function TransactionPage({ params }: PageProps) {
     )
   }
 
-  const value = weiToQRDX(transaction.value || '0')
-  const gasUsed = parseFloat(transaction.gas_used || '0')
-  const gasPrice = weiToQRDX(transaction.gas_price || '0')
-  const gasLimit = parseFloat(transaction.gas_limit || '0')
-  const fee = gasUsed * gasPrice
-  const valueUSD = value * qrdxPrice
-  const feeUSD = fee * qrdxPrice
-
-  const StatusIcon = transaction.status === 'confirmed' ? CheckCircle :
-                      transaction.status === 'pending' ? Clock : XCircle
-
-  const statusColor = transaction.status === 'confirmed' ? 'text-green-500' :
-                      transaction.status === 'pending' ? 'text-yellow-500' : 'text-red-500'
+  const confirmations = tx.blockHeight != null && tip >= tx.blockHeight ? tip - tx.blockHeight + 1 : null
+  const finalized = tx.blockHeight === 0 || (finalizedEpoch != null && blockEpoch != null && blockEpoch <= finalizedEpoch)
+  const StatusIcon = tx.status === 'failed' ? XCircle : tx.status === 'pending' ? Clock : CheckCircle2
+  const statusClass = tx.status === 'failed' ? 'text-red-500' : tx.status === 'pending' ? 'text-yellow-500' : 'text-green-500'
+  const valueUsd = usdPrice != null ? Number(tx.value) * usdPrice : null
 
   return (
     <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-3xl font-bold">Transaction Details</h1>
-          {currentNetwork === 'testnet' && (
-            <div className="px-2 py-1 text-xs rounded-full bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30">
-              Testnet Mode
-            </div>
-          )}
-          {currentNetwork === 'local' && (
-            <div className="px-2 py-1 text-xs rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-400 border border-blue-500/30">
-              Local Mode
-            </div>
-          )}
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2 flex-wrap">
+          <Link href="/transactions" className="text-muted-foreground hover:text-primary transition-colors">
+            <ChevronLeft className="h-6 w-6" />
+          </Link>
+          <h1 className="text-3xl font-bold">Transaction</h1>
+          <TxKindBadge kind={tx.kind} />
+          <NetworkModeBadge />
         </div>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-muted-foreground">{hash}</span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={() => copyToClipboard(hash, 'hash')}
-          >
-            <Copy className="h-3 w-3" />
-          </Button>
-          {copiedField === 'hash' && <span className="text-xs text-primary">Copied!</span>}
+        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+          <span className="font-mono break-all">{tx.hash}</span>
+          <CopyButton value={tx.hash} />
         </div>
       </div>
 
-      {/* Status Card */}
       <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-3">
-            <StatusIcon className={`h-8 w-8 ${statusColor}`} />
-            <div>
-              <div className="text-sm text-muted-foreground">Status</div>
-              <div className={`text-xl font-bold capitalize ${statusColor}`}>
-                {transaction.status}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Transaction Info */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Transaction Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {transaction.block_number && (
-              <div>
-                <div className="text-sm text-muted-foreground mb-1">Block Number</div>
-                <Link href={`/block/${transaction.block_number}`} className="text-primary hover:underline font-medium">
-                  {transaction.block_number.toLocaleString()}
-                </Link>
-              </div>
-            )}
-
-            <div>
-              <div className="text-sm text-muted-foreground mb-1">Timestamp</div>
-              <div className="font-medium">{formatTimestamp(transaction.timestamp)}</div>
-              <div className="text-xs text-muted-foreground">
-                {new Date(transaction.timestamp).toLocaleString()}
-              </div>
-            </div>
-
-            {transaction.nonce !== undefined && (
-              <div>
-                <div className="text-sm text-muted-foreground mb-1">Nonce</div>
-                <div className="font-medium">{transaction.nonce}</div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Value & Fees</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <div className="text-sm text-muted-foreground mb-1">Value</div>
-              <div className="text-2xl font-bold">{value.toFixed(4)} QRDX</div>
-              {qrdxPrice > 0 && (
-                <div className="text-sm text-muted-foreground">
-                  ≈ {formatUSD(valueUSD)}
-                </div>
+        <CardHeader>
+          <CardTitle>Overview</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <DetailRow label="Status">
+            <span className={`inline-flex items-center gap-2 font-medium ${statusClass}`}>
+              <StatusIcon className="h-4 w-4" />
+              {tx.status === 'confirmed' ? 'Included' : tx.status === 'failed' ? 'Failed' : 'Pending'}
+              {tx.status !== 'pending' && (finalized || (finalizedEpoch != null && blockEpoch != null)) && (
+                <span className={`text-xs px-2 py-0.5 rounded ${finalized ? 'bg-green-500/15 text-green-600 dark:text-green-400' : 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400'}`}>
+                  {finalized ? 'Finalized' : 'Awaiting finality'}
+                </span>
               )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-sm text-muted-foreground mb-1">Transaction Fee</div>
-                <div className="font-medium">{fee.toFixed(6)} QRDX</div>
-                {qrdxPrice > 0 && (
-                  <div className="text-xs text-muted-foreground">≈ {formatUSD(feeUSD)}</div>
-                )}
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground mb-1">Gas Price</div>
-                <div className="font-medium">{(gasPrice / 1e9).toFixed(2)} Gwei</div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-sm text-muted-foreground mb-1">Gas Used</div>
-                <div className="font-medium">{gasUsed.toLocaleString()}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground mb-1">Gas Limit</div>
-                <div className="font-medium">{gasLimit.toLocaleString()}</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* From & To */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Transaction Flow</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {/* From */}
-            <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
-              <div className="flex items-center gap-3">
-                <AddressAvatar address={transaction.from} size={40} />
-                <div>
-                  <div className="text-sm text-muted-foreground mb-1">From</div>
-                  <Link
-                    href={`/address/${transaction.from}`}
-                    className="font-mono text-primary hover:underline"
-                  >
-                    {formatAddress(transaction.from)}
-                  </Link>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => copyToClipboard(transaction.from, 'from')}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* Arrow */}
-            <div className="flex justify-center">
-              <div className="p-2 rounded-full bg-primary/20">
-                <ArrowRight className="h-5 w-5 text-primary" />
-              </div>
-            </div>
-
-            {/* To */}
-            <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
-              <div className="flex items-center gap-3">
-                <AddressAvatar address={transaction.to} size={40} />
-                <div>
-                  <div className="text-sm text-muted-foreground mb-1">To</div>
-                  <Link
-                    href={`/address/${transaction.to}`}
-                    className="font-mono text-primary hover:underline"
-                  >
-                    {formatAddress(transaction.to)}
-                  </Link>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => copyToClipboard(transaction.to, 'to')}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Additional Details */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Additional Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-3 rounded-lg border">
-              <div className="text-sm text-muted-foreground mb-1">Transaction Hash</div>
-              <div className="font-mono text-xs break-all">{transaction.hash}</div>
-            </div>
-            {transaction.block_hash && (
-              <div className="p-3 rounded-lg border">
-                <div className="text-sm text-muted-foreground mb-1">Block Hash</div>
-                <div className="font-mono text-xs break-all">{transaction.block_hash}</div>
-              </div>
-            )}
-          </div>
-
-          {transaction.data && transaction.data !== '0x' && (
-            <div className="p-3 rounded-lg border">
-              <div className="text-sm text-muted-foreground mb-2">Input Data</div>
-              <div className="font-mono text-xs bg-muted p-3 rounded overflow-x-auto break-all">
-                {transaction.data}
-              </div>
-            </div>
-          )}
-
-          {transaction.logs && transaction.logs.length > 0 && (
-            <div className="p-3 rounded-lg border">
-              <div className="text-sm text-muted-foreground mb-2">Event Logs ({transaction.logs.length})</div>
-              <div className="space-y-2">
-                {transaction.logs.slice(0, 5).map((log, i) => (
-                  <div key={i} className="p-2 bg-muted rounded text-xs">
-                    <div className="font-medium mb-1">Log {i}</div>
-                    <div className="text-muted-foreground">Address: {formatAddress(log.address)}</div>
-                    <div className="text-muted-foreground">Topics: {log.topics.length}</div>
-                  </div>
-                ))}
-                {transaction.logs.length > 5 && (
-                  <div className="text-xs text-muted-foreground text-center">
-                    + {transaction.logs.length - 5} more logs
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {transaction.contract_address && (
-            <div className="p-3 rounded-lg border">
-              <div className="text-sm text-muted-foreground mb-1">Contract Created</div>
-              <Link
-                href={`/address/${transaction.contract_address}`}
-                className="font-mono text-xs text-primary hover:underline break-all"
-              >
-                {transaction.contract_address}
-              </Link>
-            </div>
-          )}
-
-          {transaction.signature && (
-            <div className="p-3 rounded-lg border">
-              <div className="text-sm text-muted-foreground mb-1">Signature</div>
-              <div className="font-mono text-xs break-all bg-muted p-2 rounded">
-                {transaction.signature}
-              </div>
-            </div>
+            </span>
+          </DetailRow>
+          <DetailRow label="Method">{tx.method}</DetailRow>
+          <DetailRow label="Block">
+            <span className="inline-flex items-center gap-2 flex-wrap">
+              <BlockLink height={tx.blockHeight} />
+              {confirmations != null && <span className="text-muted-foreground">{confirmations.toLocaleString()} confirmation{confirmations === 1 ? '' : 's'}</span>}
+              {tx.blockHeight != null && <span className="text-muted-foreground">· position {tx.index}</span>}
+            </span>
+          </DetailRow>
+          <DetailRow label="Timestamp">
+            {tx.timestamp ? <>{formatDateTime(tx.timestamp)} (<TimeAgo timestamp={tx.timestamp} />)</> : '—'}
+          </DetailRow>
+          <DetailRow label="From">
+            {tx.from ? <AddressLink address={tx.from} full avatar copy /> : <span className="text-muted-foreground">{tx.kind === 'genesis' ? 'Genesis' : tx.kind === 'coinbase' ? 'Block reward' : '—'}</span>}
+          </DetailRow>
+          <DetailRow label="To">
+            <span className="inline-flex items-center gap-2">
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              <AddressLink address={tx.to} full avatar copy />
+            </span>
+          </DetailRow>
+          <DetailRow label="Value">
+            <span className="font-semibold">{formatQrdx(tx.value, 18)}</span>
+            {valueUsd != null && <span className="text-muted-foreground"> (${valueUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })})</span>}
+          </DetailRow>
+          <DetailRow label={tx.kind === 'evm' ? 'Max Transaction Fee' : 'Transaction Fee'}>
+            {tx.fee != null ? formatQrdx(tx.fee, 18) : <span className="text-muted-foreground">Unavailable</span>}
+            {tx.kind === 'evm' && <span className="text-muted-foreground text-xs block">Gas limit × gas price; the node does not expose gas used for block-included EVM transactions.</span>}
+          </DetailRow>
+          {tx.blockHash && (
+            <DetailRow label="Block Hash">
+              <span className="inline-flex items-start gap-1">
+                <Link href={`/block/${tx.blockHash}`} className="font-mono break-all text-primary hover:underline">{tx.blockHash}</Link>
+                <CopyButton value={tx.blockHash} />
+              </span>
+            </DetailRow>
           )}
         </CardContent>
       </Card>
+
+      {tx.evm && <EvmDetails tx={tx} />}
+      {tx.native && <NativeDetails tx={tx} />}
+      {tx.exchange && <ExchangeDetails tx={tx} />}
+      {tx.contract && <ContractDetails tx={tx} />}
+
+      <p className="text-xs text-muted-foreground">
+        Amounts: native outputs use {NATIVE_DECIMALS} decimals, EVM values use {EVM_DECIMALS} decimals (wei). {formatAmount('1', 0)} QRDX = 10<sup>{tx.kind === 'evm' || tx.kind === 'contract' ? EVM_DECIMALS : NATIVE_DECIMALS}</sup> base units.
+      </p>
     </div>
   )
 }

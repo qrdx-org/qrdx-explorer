@@ -3,6 +3,7 @@ import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import Navigation from '@/components/Navigation'
 import Footer from '@/components/Footer'
+import { ChainProvider } from '@/components/explorer/ChainProvider'
 import type { Metadata } from 'next'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -10,7 +11,7 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'QRDX Explorer - Quantum Resistant Blockchain Explorer',
   description: 'Explore the quantum-resistant blockchain. View transactions, blocks, addresses, and smart contracts on the QRDX network.',
-  keywords: ['quantum resistant', 'blockchain explorer', 'QRDX', 'transactions', 'blocks', 'addresses', 'smart contracts', 'post-quantum cryptography'],
+  keywords: ['quantum resistant', 'blockchain explorer', 'QRDX', 'transactions', 'blocks', 'addresses', 'validators', 'post-quantum cryptography'],
   authors: [{ name: 'QRDX Foundation' }],
   creator: 'QRDX Foundation',
   publisher: 'QRDX Foundation',
@@ -56,11 +57,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <div className="flex min-h-screen flex-col">
-            <Navigation />
-            <main className="flex-1">{children}</main>
-            <Footer />
-          </div>
+          <ChainProvider>
+            <div className="flex min-h-screen flex-col">
+              <Navigation />
+              <main className="flex-1">{children}</main>
+              <Footer />
+            </div>
+          </ChainProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -7,3 +7,4 @@
 [submodule "submodules/qrdx-chain"]
 	path = submodules/qrdx-chain
 	url = https://github.com/qrdx-org/qrdx-chain.git
+	branch = test

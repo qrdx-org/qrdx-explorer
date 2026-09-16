@@ -1,456 +1,212 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
+import { Award, Search, Users, Wallet } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
-import AddressAvatar from '@/components/AddressAvatar'
-import { formatAddress, formatUSD, formatBalance, formatLargeNumber } from '@/lib/mock-data'
-import { getAllKnownAddresses, type KnownAddress, getKnownAddress } from '@/lib/known-addresses'
-import { getTopAddresses } from '@/lib/api-client'
-import { getTokenPriceWithFallback } from '@/lib/pricing-api'
-import { ChevronLeft, ChevronRight, Search, ArrowUpDown, Users, Award, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react'
-import { updateUrlWithNetwork, getCurrentNetworkConfig, type NetworkType } from '@/lib/network-utils'
-import { weiToQRDX } from '@/lib/utils'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  AddressLink,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  NetworkModeBadge,
+  StatCard,
+} from '@/components/explorer/common'
+import { getAddressBalance, getTopAddresses, type TopAddress } from '@/lib/qrdx'
+import { formatAmount, formatQrdx } from '@/lib/format'
+import { getAllKnownAddresses, getKnownAddress } from '@/lib/known-addresses'
 
-interface AddressData {
+interface KnownRow {
   address: string
-  balance: number
-  transactionCount: number
-  knownAddress?: KnownAddress
+  name: string
+  description: string
+  category: string
+  balance: string | null
+  error: boolean
 }
 
-type SortField = 'balance' | 'transactions' | 'address'
-type SortDirection = 'asc' | 'desc'
+function sumBalances(values: Array<string | null>): string {
+  // Sum as scaled integers (6 dp is enough for display) to avoid float drift.
+  const scale = BigInt(1_000_000)
+  let total = BigInt(0)
+  for (const v of values) {
+    if (!v) continue
+    const [whole, fraction = ''] = v.split('.')
+    total += BigInt(whole || '0') * scale + BigInt((fraction + '000000').slice(0, 6))
+  }
+  const fraction = (total % scale).toString().padStart(6, '0').replace(/0+$/, '')
+  return `${total / scale}${fraction ? `.${fraction}` : ''}`
+}
 
 export default function AddressesPage() {
-  const [addresses, setAddresses] = useState<AddressData[]>([])
-  const [filteredAddresses, setFilteredAddresses] = useState<AddressData[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [qrdxPrice, setQrdxPrice] = useState(0)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const [sortField, setSortField] = useState<SortField>('balance')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-  const [activeTab, setActiveTab] = useState<'all' | 'known'>('all')
-  const [currentNetwork, setCurrentNetwork] = useState<NetworkType>('mainnet')
-  
-  const itemsPerPage = 20
-
-  // Update URL with network parameters and get current network
-  useEffect(() => {
-    updateUrlWithNetwork()
-    const config = getCurrentNetworkConfig()
-    if (config) {
-      setCurrentNetwork(config.type)
-    }
-  }, [])
-
-  // Fetch addresses data
-  useEffect(() => {
-    async function fetchAddresses() {
-      setLoading(true)
-      setError(null)
-      
-      try {
-        // Fetch QRDX price
-        const price = await getTokenPriceWithFallback('QRDX')
-        setQrdxPrice(price)
-        
-        // Fetch top addresses from API
-        const response = await getTopAddresses(1000, 'balance')
-        
-        if (response.error || !response.data) {
-          throw new Error(response.error || 'Failed to fetch addresses')
-        }
-        
-        // The API wraps response in 'result'
-        const result = response.data.result || response.data
-        
-        // Map API response to AddressData format
-        const addressList: AddressData[] = result.addresses.map((item) => {
-          // Parse balance from string (in smallest unit) to QRDX number
-          const balance = weiToQRDX(item.balance)
-          
-          // Check if this is a known address
-          const knownAddr = getKnownAddress(item.address)
-          
-          return {
-            address: item.address,
-            balance: balance,
-            transactionCount: item.output_count,
-            knownAddress: knownAddr || undefined
-          }
-        })
-        
-        setAddresses(addressList)
-      } catch (err) {
-        console.error('Error fetching addresses:', err)
-        setError(err instanceof Error ? err.message : 'Unknown error occurred')
-      } finally {
-        setLoading(false)
-      }
-    }
-    
-    fetchAddresses()
-  }, [])
-
-  // Filter and sort addresses
-  useEffect(() => {
-    let filtered = [...addresses]
-    
-    // Filter by tab
-    if (activeTab === 'known') {
-      filtered = filtered.filter(addr => addr.knownAddress)
-    }
-    
-    // Filter by search
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(addr => 
-        addr.address.toLowerCase().includes(query) ||
-        addr.knownAddress?.name.toLowerCase().includes(query) ||
-        addr.knownAddress?.description.toLowerCase().includes(query)
-      )
-    }
-    
-    // Sort
-    filtered.sort((a, b) => {
-      let comparison = 0
-      
-      switch (sortField) {
-        case 'balance':
-          comparison = a.balance - b.balance
-          break
-        case 'transactions':
-          comparison = a.transactionCount - b.transactionCount
-          break
-        case 'address':
-          comparison = a.address.localeCompare(b.address)
-          break
-      }
-      
-      return sortDirection === 'asc' ? comparison : -comparison
-    })
-    
-    setFilteredAddresses(filtered)
-    setCurrentPage(1) // Reset to first page when filters change
-  }, [addresses, searchQuery, sortField, sortDirection, activeTab])
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortDirection('desc')
-    }
-  }
-
-  // Pagination
-  const totalPages = Math.ceil(filteredAddresses.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const currentAddresses = filteredAddresses.slice(startIndex, endIndex)
-
-  const SortButton = ({ field, children }: { field: SortField, children: React.ReactNode }) => (
-    <button
-      onClick={() => handleSort(field)}
-      className="flex items-center gap-1 hover:text-primary transition-colors"
-    >
-      {children}
-      <ArrowUpDown className={`h-3 w-3 ${sortField === field ? 'text-primary' : 'text-muted-foreground'}`} />
-    </button>
+  const [rich, setRich] = useState<TopAddress[] | null>(null)
+  const [richError, setRichError] = useState<string | null>(null)
+  const [knownRows, setKnownRows] = useState<KnownRow[]>(() =>
+    Object.entries(getAllKnownAddresses()).map(([address, meta]) => ({
+      address,
+      name: meta.name,
+      description: meta.description,
+      category: meta.category,
+      balance: null,
+      error: false,
+    })),
   )
+  const [filter, setFilter] = useState('')
+
+  useEffect(() => {
+    getTopAddresses(100)
+      .then(setRich)
+      .catch((err) => setRichError(err instanceof Error ? err.message : 'Failed to load rich list'))
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      for (const row of knownRows) {
+        try {
+          const balance = await getAddressBalance(row.address)
+          if (cancelled) return
+          setKnownRows((prev) => prev.map((r) => (r.address === row.address ? { ...r, balance } : r)))
+        } catch {
+          if (cancelled) return
+          setKnownRows((prev) => prev.map((r) => (r.address === row.address ? { ...r, error: true } : r)))
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const q = filter.trim().toLowerCase()
+  const filteredRich = useMemo(
+    () => (rich ?? []).filter((r) => !q || r.address.toLowerCase().includes(q) || getKnownAddress(r.address)?.name.toLowerCase().includes(q)),
+    [rich, q],
+  )
+  const filteredKnown = useMemo(
+    () => knownRows.filter((r) => !q || r.address.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)),
+    [knownRows, q],
+  )
+  const richTotal = useMemo(() => sumBalances((rich ?? []).map((r) => r.balance)), [rich])
+  const knownTotal = useMemo(() => sumBalances(knownRows.map((r) => r.balance)), [knownRows])
 
   return (
     <div className="container mx-auto px-4 py-8">
-      {/* Network Badge */}
-      {currentNetwork !== 'mainnet' && (
-        <div className="mb-4">
-          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-            currentNetwork === 'testnet' 
-              ? 'bg-orange-500/20 text-orange-700 dark:text-orange-400 border border-orange-500/30'
-              : 'bg-purple-500/20 text-purple-700 dark:text-purple-400 border border-purple-500/30'
-          }`}>
-            {currentNetwork === 'testnet' ? 'Testnet Mode' : 'Local Mode'}
-          </span>
-        </div>
-      )}
-
-      {/* Header */}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2">Addresses</h1>
-        <p className="text-muted-foreground">
-          Browse all addresses on the QRDX blockchain
-        </p>
+        <div className="flex items-center gap-3 mb-2">
+          <h1 className="text-3xl font-bold">Addresses</h1>
+          <NetworkModeBadge />
+        </div>
+        <p className="text-muted-foreground mb-6">Largest holders and protocol system wallets</p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <StatCard label="Ranked Holders" icon={Users} value={rich ? rich.length : '—'} hint="Top UTXO balances reported by the node" />
+          <StatCard label="Held by Top Holders" icon={Wallet} value={rich ? `${formatAmount(richTotal, 2)} QRDX` : '—'} />
+          <StatCard label="System Wallets" icon={Award} value={`${formatAmount(knownTotal, 2)} QRDX`} hint={`${knownRows.length} known addresses`} />
+        </div>
+
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground h-5 w-5" />
+          <Input
+            placeholder="Filter by address or name"
+            className="pl-12 py-5 rounded-xl border-2"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+        </div>
       </div>
 
-      {/* Error State */}
-      {error && (
-        <Card className="border-red-500/50 bg-red-500/10 mb-8">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-8 w-8 text-red-500" />
-              <div>
-                <h3 className="font-semibold text-lg mb-1">Error Loading Addresses</h3>
-                <p className="text-sm text-muted-foreground">{error}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <Tabs defaultValue="rich" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="rich">Rich List</TabsTrigger>
+          <TabsTrigger value="known">System &amp; Known Wallets</TabsTrigger>
+        </TabsList>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Addresses</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{addresses.length.toLocaleString()}</div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Known Addresses</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {addresses.filter(a => a.knownAddress).length}
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Value Locked</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {formatBalance(addresses.reduce((sum, a) => sum + a.balance, 0), 0)} QRDX
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Content */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <CardTitle>Address List</CardTitle>
+        <TabsContent value="rich">
+          <Card>
+            <CardHeader>
+              <CardTitle>Top Holders</CardTitle>
               <CardDescription>
-                {filteredAddresses.length.toLocaleString()} addresses found
+                Ranked by the node from the UTXO set (<code>/get_top_addresses</code>). Account-model balances (EVM and
+                post-quantum accounts) are not included in the node&apos;s ranking — open an address to see its full balance.
               </CardDescription>
-            </div>
-            
-            {/* Search */}
-            <div className="relative w-full md:w-96">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by address or name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-          </div>
-        </CardHeader>
-        
-        <CardContent>
-          {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'all' | 'known')} className="mb-6">
-            <TabsList>
-              <TabsTrigger value="all" className="gap-2">
-                <Users className="h-4 w-4" />
-                All Addresses
-              </TabsTrigger>
-              <TabsTrigger value="known" className="gap-2">
-                <Award className="h-4 w-4" />
-                Known Addresses
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-
-          {/* Table Header */}
-          <div className="hidden md:grid md:grid-cols-12 gap-4 px-4 py-3 border-b font-medium text-sm">
-            <div className="col-span-1 text-muted-foreground">#</div>
-            <div className="col-span-4 text-muted-foreground">
-              <SortButton field="address">Address</SortButton>
-            </div>
-            <div className="col-span-2 text-muted-foreground text-right">
-              <SortButton field="balance">Balance</SortButton>
-            </div>
-            <div className="col-span-3 text-muted-foreground text-right">
-              Value
-            </div>
-            <div className="col-span-2 text-muted-foreground text-right">
-              <SortButton field="transactions">Txns</SortButton>
-            </div>
-          </div>
-
-          {/* Address List */}
-          {loading ? (
-            <div className="text-center py-12 text-muted-foreground">
-              Loading addresses...
-            </div>
-          ) : currentAddresses.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              No addresses found
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {currentAddresses.map((addr, index) => {
-                const usdValue = addr.balance * qrdxPrice
-                // Mock 24h change (replace with real data when available)
-                const priceChange = (Math.random() - 0.5) * 20
-                const isPositive = priceChange >= 0
-                
-                return (
-                <Link
-                  key={addr.address}
-                  href={`/address/${addr.address}`}
-                  className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
-                >
-                  {/* Rank */}
-                  <div className="hidden md:flex col-span-1 items-center text-muted-foreground font-mono text-sm">
-                    {startIndex + index + 1}
-                  </div>
-                  
-                  {/* Address Info */}
-                  <div className="col-span-12 md:col-span-4 flex items-center gap-3">
-                    <AddressAvatar
-                      address={addr.address}
-                      size={40}
-                      imageUrl={addr.knownAddress?.image}
-                    />
-                    <div className="min-w-0 flex-1">
-                      {addr.knownAddress ? (
-                        <>
-                          <div className="font-medium flex items-center gap-2 flex-wrap">
-                            {addr.knownAddress.name}
-                            {addr.knownAddress.verified && (
-                              <span className="text-primary text-xs">✓</span>
-                            )}
-                          </div>
-                          <div className="text-sm text-muted-foreground font-mono truncate">
-                            {formatAddress(addr.address)}
-                          </div>
-                          <div className="flex gap-1 mt-1 flex-wrap">
-                            {addr.knownAddress.badges.map((badge, i) => (
-                              <span
-                                key={i}
-                                className={`text-xs px-2 py-0.5 rounded border ${badge.bgColor} ${badge.textColor} ${badge.borderColor}`}
-                              >
-                                {badge.text}
-                              </span>
-                            ))}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="font-mono text-sm truncate">
-                          {addr.address}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Balance */}
-                  <div className="col-span-4 md:col-span-2 flex md:justify-end items-center">
-                    <div className="text-right">
-                      <div className="font-medium">{formatLargeNumber(addr.balance)} QRDX</div>
-                      <div className="text-sm text-muted-foreground md:hidden">Balance</div>
-                    </div>
-                  </div>
-                  
-                  {/* Value */}
-                  <div className="col-span-4 md:col-span-3 flex md:justify-end items-center">
-                    <div className="text-right">
-                      <div className="font-medium">{formatUSD(usdValue)}</div>
-                      <div className={`text-xs flex items-center gap-1 justify-end ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
-                        {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                        {isPositive ? '+' : ''}{priceChange.toFixed(2)}%
-                      </div>
-                      <div className="text-sm text-muted-foreground md:hidden">Value (24h)</div>
-                    </div>
-                  </div>
-                  
-                  {/* Transactions */}
-                  <div className="col-span-4 md:col-span-2 flex md:justify-end items-center">
-                    <div className="text-right">
-                      <div className="font-medium">{addr.transactionCount.toLocaleString()}</div>
-                      <div className="text-sm text-muted-foreground md:hidden">Transactions</div>
-                    </div>
-                  </div>
-                </Link>
-              )
-              })}
-            </div>
-          )}
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-6 pt-4 border-t">
-              <div className="text-sm text-muted-foreground">
-                Showing {startIndex + 1} to {Math.min(endIndex, filteredAddresses.length)} of {filteredAddresses.length} addresses
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-                
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNum: number
-                    if (totalPages <= 5) {
-                      pageNum = i + 1
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i
-                    } else {
-                      pageNum = currentPage - 2 + i
-                    }
-                    
-                    return (
-                      <Button
-                        key={pageNum}
-                        variant={currentPage === pageNum ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setCurrentPage(pageNum)}
-                        className="w-9"
-                      >
-                        {pageNum}
-                      </Button>
-                    )
-                  })}
+            </CardHeader>
+            <CardContent className="p-0">
+              {richError ? (
+                <div className="p-4">
+                  <ErrorState title="Unable to load rich list" error={richError} />
                 </div>
-                
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              ) : !rich ? (
+                <LoadingState label="Loading rich list…" />
+              ) : filteredRich.length === 0 ? (
+                <EmptyState title="No addresses found" />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b bg-muted/50 text-sm">
+                        <th className="text-left p-4 font-medium text-muted-foreground w-16">Rank</th>
+                        <th className="text-left p-4 font-medium text-muted-foreground">Address</th>
+                        <th className="text-right p-4 font-medium text-muted-foreground">Balance</th>
+                        <th className="text-right p-4 font-medium text-muted-foreground hidden md:table-cell">Share</th>
+                        <th className="text-right p-4 font-medium text-muted-foreground hidden sm:table-cell">UTXOs</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {filteredRich.map((row) => {
+                        const rank = rich.indexOf(row) + 1
+                        const share = Number(richTotal) > 0 ? (Number(row.balance) / Number(richTotal)) * 100 : 0
+                        return (
+                          <tr key={row.address} className="hover:bg-muted/50 transition-colors">
+                            <td className="p-4 font-mono text-muted-foreground">{rank}</td>
+                            <td className="p-4"><AddressLink address={row.address} avatar /></td>
+                            <td className="p-4 text-right font-medium whitespace-nowrap">{formatQrdx(row.balance, 4)}</td>
+                            <td className="p-4 text-right hidden md:table-cell text-sm text-muted-foreground">{share.toFixed(2)}%</td>
+                            <td className="p-4 text-right hidden sm:table-cell font-mono text-sm">{row.outputCount}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="known">
+          <Card>
+            <CardHeader>
+              <CardTitle>System &amp; Known Wallets</CardTitle>
+              <CardDescription>Live balances from the connected node</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {filteredKnown.length === 0 ? (
+                <EmptyState title="No matching wallets" />
+              ) : (
+                <div className="divide-y">
+                  {filteredKnown.map((row) => (
+                    <div key={row.address} className="flex items-center justify-between gap-4 p-4 hover:bg-muted/50 transition-colors">
+                      <div className="min-w-0">
+                        <AddressLink address={row.address} avatar />
+                        <div className="text-xs text-muted-foreground mt-1 truncate">{row.description}</div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="font-medium">
+                          {row.error ? <span className="text-muted-foreground">Unavailable</span> : row.balance == null ? <span className="text-muted-foreground">Loading…</span> : formatQrdx(row.balance, 4)}
+                        </div>
+                        <div className="text-xs text-muted-foreground capitalize">{row.category}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

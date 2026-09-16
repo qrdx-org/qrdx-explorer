@@ -234,7 +234,7 @@ interface Transaction {
 2. Add route in `/app` if needed
 3. Update documentation
 4. Add types in `/lib/types.ts`
-5. Create mock data helpers in `/lib/mock-data.ts`
+5. Add data access in `/lib/qrdx/api.ts` (see `docs/NODE_INTEGRATION.md`)
 
 ### Best Practices
 - Use TypeScript for type safety

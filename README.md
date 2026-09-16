@@ -257,48 +257,42 @@ Response:
 
 ```
 qrdx-explorer/
-├── app/                    # Next.js app directory
-│   ├── address/[address]/  # Address detail page
-│   ├── tx/[hash]/         # Transaction detail page
-│   ├── page.tsx           # Home page
-│   └── layout.tsx         # Root layout
-├── components/            # React components
-│   ├── AddressAvatar.tsx  # Deterministic identicons
-│   ├── Navigation.tsx     # Header navigation
-│   ├── Footer.tsx         # Footer
-│   └── ui/               # shadcn/ui components
-├── lib/                   # Utilities and services
-│   ├── api-client.ts      # QRDX node API client
-│   ├── pricing-api.ts     # Token pricing service
-│   ├── token-positions.ts # Position calculator
-│   ├── identicon.ts       # Avatar generation
-│   ├── types.ts          # TypeScript types
-│   └── utils.ts          # Helper functions
-├── openapi.json          # API specification
-└── public/               # Static assets
+├── app/
+│   ├── page.tsx              # Live dashboard
+│   ├── blocks/               # Block list (auto-updating)
+│   ├── block/[number]/       # Block detail (height or hash)
+│   ├── transactions/         # Transaction list + mempool
+│   ├── tx/[hash]/            # Transaction detail (EVM, native, genesis, exchange)
+│   ├── address/[address]/    # Address / validator detail
+│   ├── addresses/            # Rich list and system wallets
+│   ├── validators/           # Validator set and performance
+│   └── network/              # Node health, streaming, RPC, peers, state roots
+├── components/
+│   ├── explorer/             # ChainProvider, live hooks, shared explorer UI
+│   └── ui/                   # shadcn/ui components
+├── lib/
+│   ├── qrdx/                 # Node integration (REST, JSON-RPC, WebSocket/SSE, decoders)
+│   ├── format.ts             # Display formatting
+│   ├── pricing-api.ts        # Token pricing service (QRDX Trade)
+│   └── known-addresses.ts    # System wallet metadata
+└── docs/NODE_INTEGRATION.md  # How the explorer maps onto the node API
 ```
 
-## Key Libraries
+## Node Integration
 
-### API Integration
-- **lib/api-client.ts**: Type-safe API client for QRDX node
-- **lib/pricing-api.ts**: Token price fetching with caching
-- **lib/token-positions.ts**: Client-side position calculation from transaction logs
+All chain data comes from the connected QRDX node — see [docs/NODE_INTEGRATION.md](docs/NODE_INTEGRATION.md)
+for the endpoint mapping, realtime transport fallbacks, and node behaviours the explorer accounts for.
 
-### Token Position Calculation
-
-Positions are calculated from transaction history by:
-1. Parsing QRC-20 Transfer events from transaction logs
-2. Tracking incoming/outgoing transfers
-3. Calculating balances and average buy prices
-4. Computing unrealized P&L with current prices
-
-Example:
 ```typescript
-import { calculateTokenPositions, calculateTokenBalance } from '@/lib/token-positions'
+import { getBlock, getTransaction, getAddress, ChainStream } from '@/lib/qrdx'
 
-const positions = calculateTokenPositions(transactions, userAddress, tokenAddress, decimals)
-const balance = calculateTokenBalance(positions)
+const block = await getBlock(42)                     // or a 64-hex block hash
+const { transaction } = await getTransaction('0x…')  // EVM, native, genesis or exchange
+const account = await getAddress('0xPQ…')            // balance, UTXOs, validator info
+
+const stream = new ChainStream()                     // WebSocket → SSE → polling
+stream.onBlock(({ height }) => console.log('new block', height))
+stream.start()
 ```
 
 ## Available Scripts

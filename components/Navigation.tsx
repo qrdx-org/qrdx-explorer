@@ -4,7 +4,16 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { ThemeToggle } from './theme-toggle'
 import NetworkSwitcher from './NetworkSwitcher'
-import { Search, Database, Activity, FileText, Blocks } from 'lucide-react'
+import LiveIndicator from './explorer/LiveIndicator'
+import { Activity, Blocks, Server, ShieldCheck, Wallet } from 'lucide-react'
+
+const NAV_LINKS = [
+  { href: '/blocks', label: 'Blocks', icon: Blocks },
+  { href: '/transactions', label: 'Transactions', icon: Activity },
+  { href: '/validators', label: 'Validators', icon: ShieldCheck },
+  { href: '/addresses', label: 'Addresses', icon: Wallet },
+  { href: '/network', label: 'Network', icon: Server },
+]
 
 export default function Navigation() {
   return (
@@ -19,29 +28,27 @@ export default function Navigation() {
 
           {/* Navigation Links */}
           <div className="hidden md:flex items-center space-x-6">
-            <Link href="/blocks" className="flex items-center space-x-1 text-sm hover:text-primary transition-colors">
-              <Blocks className="h-4 w-4" />
-              <span>Blocks</span>
-            </Link>
-            <Link href="/transactions" className="flex items-center space-x-1 text-sm hover:text-primary transition-colors">
-              <Activity className="h-4 w-4" />
-              <span>Transactions</span>
-            </Link>
-            <Link href="/addresses" className="flex items-center space-x-1 text-sm hover:text-primary transition-colors">
-              <Search className="h-4 w-4" />
-              <span>Addresses</span>
-            </Link>
-            <Link href="/contracts" className="flex items-center space-x-1 text-sm hover:text-primary transition-colors">
-              <FileText className="h-4 w-4" />
-              <span>Contracts</span>
-            </Link>
+            {NAV_LINKS.map(({ href, label, icon: Icon }) => (
+              <Link key={href} href={href} className="flex items-center space-x-1 text-sm hover:text-primary transition-colors">
+                <Icon className="h-4 w-4" />
+                <span>{label}</span>
+              </Link>
+            ))}
           </div>
 
           {/* Right side: Network Switcher + Theme Toggle */}
           <div className="flex items-center gap-2">
+            <LiveIndicator />
             <NetworkSwitcher />
             <ThemeToggle />
           </div>
+        </div>
+        <div className="flex md:hidden items-center gap-4 overflow-x-auto pb-3 -mt-1 text-sm">
+          {NAV_LINKS.map(({ href, label }) => (
+            <Link key={href} href={href} className="whitespace-nowrap text-muted-foreground hover:text-primary">
+              {label}
+            </Link>
+          ))}
         </div>
       </div>
     </nav>

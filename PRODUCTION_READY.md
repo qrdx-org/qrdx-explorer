@@ -7,9 +7,8 @@ The QRDX Explorer is now **fully production-ready** with real API integration!
 ### What's Been Implemented
 
 #### 🔧 Core API Integration
-- ✅ **API Client** (`lib/api-client.ts`) - Type-safe client for all QRDX node endpoints
+- ✅ **Node Integration** (`lib/qrdx/`) - REST, JSON-RPC, WebSocket/SSE streaming and payload decoders (see `docs/NODE_INTEGRATION.md`)
 - ✅ **Pricing Service** (`lib/pricing-api.ts`) - Real-time token prices from QRDX Trade
-- ✅ **Position Calculator** (`lib/token-positions.ts`) - Client-side position tracking from transaction logs
 - ✅ **Type Definitions** (`lib/types.ts`) - Complete TypeScript types for all APIs
 
 #### 📱 Frontend Pages
@@ -152,9 +151,8 @@ See [`docs/BACKEND_IMPLEMENTATION.md`](./docs/BACKEND_IMPLEMENTATION.md) for det
 ## 📝 Key Files
 
 ### API Integration
-- `lib/api-client.ts` - QRDX node client (265 lines)
+- `lib/qrdx/` - QRDX node integration
 - `lib/pricing-api.ts` - Pricing service (116 lines)
-- `lib/token-positions.ts` - Position calculator (223 lines)
 
 ### Pages
 - `app/address/[address]/page.tsx` - Address viewer (480 lines)

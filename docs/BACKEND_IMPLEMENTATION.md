@@ -1,5 +1,7 @@
 # QRDX Explorer - Backend Implementation Guide
 
+> **Superseded:** the explorer is now integrated with the real node API in `submodules/qrdx-chain`. See [NODE_INTEGRATION.md](NODE_INTEGRATION.md). This document describes the originally proposed endpoints and is kept for reference.
+
 This document outlines the backend endpoints that need to be implemented in your QRDX node to fully support the explorer.
 
 ## Quick Start
@@ -353,5 +355,4 @@ The explorer now includes:
 
 If you need help implementing any of these endpoints, refer to:
 - [openapi.json](../openapi.json) - Full API specification
-- [lib/api-client.ts](../lib/api-client.ts) - Frontend API usage
-- [lib/token-positions.ts](../lib/token-positions.ts) - Position calculation logic
+- [lib/qrdx/api.ts](../lib/qrdx/api.ts) - Frontend API usage
