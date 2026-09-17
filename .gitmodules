@@ -4,7 +4,7 @@
 [submodule "submodules/qrdx-trade"]
 	path = submodules/qrdx-trade
 	url = https://github.com/qrdx-org/qrdx-trade
-[submodule "submodules/qrdx-chain"]
-	path = submodules/qrdx-chain
-	url = https://github.com/qrdx-org/qrdx-chain.git
+#[submodule "submodules/qrdx-chain"]
+#	path = submodules/qrdx-chain
+#	url = https://github.com/qrdx-org/qrdx-chain.git
 #	branch = test
