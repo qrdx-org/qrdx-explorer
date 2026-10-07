@@ -1,12 +1,14 @@
-import { Inter } from 'next/font/google'
+import { Inter, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import Navigation from '@/components/Navigation'
 import Footer from '@/components/Footer'
+import { StatusBar } from '@/components/chrome/StatusBar'
 import { ChainProvider } from '@/components/explorer/ChainProvider'
 import type { Metadata } from 'next'
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
+const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains' })
 
 export const metadata: Metadata = {
   title: 'QRDX Explorer - Quantum Resistant Blockchain Explorer',
@@ -50,7 +52,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className={`${inter.className} ${inter.variable} ${mono.variable}`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"
@@ -58,10 +60,11 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <ChainProvider>
-            <div className="flex min-h-screen flex-col">
+            <div className="flex min-h-screen flex-col bg-background">
               <Navigation />
               <main className="flex-1">{children}</main>
               <Footer />
+              <StatusBar />
             </div>
           </ChainProvider>
         </ThemeProvider>

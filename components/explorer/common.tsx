@@ -90,12 +90,12 @@ export function TimeAgo({ timestamp }: { timestamp: number | null | undefined })
 }
 
 const KIND_STYLES: Record<ExplorerTransaction['kind'], { label: string; className: string }> = {
-  evm: { label: 'EVM', className: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30' },
-  contract: { label: 'Contract', className: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30' },
-  native: { label: 'Native', className: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
-  coinbase: { label: 'Reward', className: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30' },
-  genesis: { label: 'Genesis', className: 'bg-gray-500/15 text-gray-600 dark:text-gray-300 border-gray-500/30' },
-  exchange: { label: 'Exchange', className: 'bg-pink-500/15 text-pink-600 dark:text-pink-400 border-pink-500/30' },
+  evm: { label: 'EVM', className: 'bg-primary/10 text-primary border-primary/30' },
+  contract: { label: 'Contract', className: 'bg-primary/10 text-primary border-primary/30' },
+  native: { label: 'Native', className: 'bg-muted text-foreground border-border' },
+  coinbase: { label: 'Reward', className: 'bg-warn/10 text-warn border-warn/30' },
+  genesis: { label: 'Genesis', className: 'bg-muted text-muted-foreground border-border' },
+  exchange: { label: 'Exchange', className: 'bg-bid/10 text-bid border-bid/30' },
 }
 
 export function TxKindBadge({ kind }: { kind: ExplorerTransaction['kind'] }) {

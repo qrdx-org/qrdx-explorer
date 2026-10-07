@@ -29,6 +29,8 @@ import {
 } from '@/lib/qrdx'
 import { formatAmount, formatDateTime, formatQrdx } from '@/lib/format'
 import { getTokenPrice } from '@/lib/pricing-api'
+import { IndexedTxView } from '@/components/tx/IndexedTxView'
+import { getIndexedTransaction, type IndexedTxDetail } from '@/lib/qrdx/indexed'
 
 interface PageProps {
   params: Promise<{ hash: string }>
@@ -200,7 +202,7 @@ function ContractDetails({ tx }: { tx: ExplorerTransaction }) {
   )
 }
 
-export default function TransactionPage({ params }: PageProps) {
+function LegacyTransactionPage({ params }: PageProps) {
   const { hash } = use(params)
   const { height: tip, finalizedEpoch, subscribeBlocks } = useChain()
   const [lookup, setLookup] = useState<TransactionLookup | null>(null)
@@ -379,4 +381,29 @@ export default function TransactionPage({ params }: PageProps) {
       </p>
     </div>
   )
+}
+
+/**
+ * A transaction: exchange operations (swaps, orders, pools, perps, tokens) from the node's
+ * index and receipt; transfers and EVM transactions in the detailed view above.
+ */
+export default function TransactionPage({ params }: PageProps) {
+  const { hash } = use(params)
+  const [indexed, setIndexed] = useState<IndexedTxDetail | null | undefined>(undefined)
+  useEffect(() => {
+    let live = true
+    getIndexedTransaction(hash).then((t) => live && setIndexed(t))
+    return () => {
+      live = false
+    }
+  }, [hash])
+  if (indexed === undefined) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <LoadingState label="Loading transaction…" />
+      </div>
+    )
+  }
+  if (indexed && indexed.kind === 'exchange') return <IndexedTxView tx={indexed} />
+  return <LegacyTransactionPage params={params} />
 }

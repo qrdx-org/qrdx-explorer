@@ -2,236 +2,222 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Activity, ArrowRight, Blocks, CheckCircle2, Clock, Layers, Radio, ShieldCheck, Users } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
-import SearchBar from '@/components/explorer/SearchBar'
+import { ArrowRight, BarChart3, Blocks, Clock, Coins, Layers, Radio, Search, ShieldCheck, TrendingUp } from 'lucide-react'
+import { Bars, type Bar } from '@/components/charts/Bars'
+import { openSearch } from '@/components/chrome/SearchDialog'
 import { useChain } from '@/components/explorer/ChainProvider'
+import { AddressLink, BlockLink, TimeAgo, TxLink } from '@/components/explorer/common'
+import { useTokenMap, useUsdPrices, usdOf } from '@/components/explorer/data'
+import { opLabel } from '@/components/explorer/HistoryTable'
 import { useLiveBlocks } from '@/components/explorer/hooks'
-import {
-  AddressLink,
-  BlockLink,
-  EmptyState,
-  ErrorState,
-  LoadingState,
-  NetworkModeBadge,
-  StatCard,
-  TimeAgo,
-  TxKindBadge,
-  TxLink,
-} from '@/components/explorer/common'
-import { blockTxCount, getNodeMetrics, getValidators, type NodeMetrics, type ValidatorInfo } from '@/lib/qrdx'
-import { formatAmount, formatInteger, formatQrdx } from '@/lib/format'
+import { Panel, Pill, Tile, fmtCompact, fmtNum, fmtPct, fmtUsd, toneOf } from '@/components/explorer/ui'
+import { blockTxCount, getValidators, type ValidatorInfo } from '@/lib/qrdx'
+import { assetSymbol, getLatestTransactions, getMarkets, isOracleVote, type IndexedTx, type Ticker } from '@/lib/qrdx/indexed'
+import { n18 } from '@/lib/math/decimal'
+import { cn } from '@/lib/utils'
 
-export default function Home() {
-  const { height, finalizedEpoch, stream } = useChain()
-  const { blocks, loading, error, reload } = useLiveBlocks(25)
-  const [metrics, setMetrics] = useState<NodeMetrics | null>(null)
+export default function HomePage() {
+  const { height, finalizedEpoch, stream, network } = useChain()
+  const { blocks } = useLiveBlocks(30)
+  const tokens = useTokenMap()
   const [validators, setValidators] = useState<ValidatorInfo[] | null>(null)
+  const [txs, setTxs] = useState<IndexedTx[] | null>(null)
+  const [markets, setMarkets] = useState<Ticker[] | null>(null)
+  const prices = useUsdPrices(['QRDX'])
+  const qrdx = usdOf(prices, 'QRDX')
 
   useEffect(() => {
-    let cancelled = false
-    const refresh = () => {
-      getNodeMetrics().then((m) => !cancelled && setMetrics(m)).catch(() => undefined)
+    getValidators().then(setValidators).catch(() => setValidators([]))
+    const load = () => {
+      getLatestTransactions({ limit: 500 }).then((p) => setTxs(p.transactions)).catch(() => setTxs([]))
+      getMarkets().then(setMarkets).catch(() => setMarkets([]))
     }
-    refresh()
-    getValidators().then((v) => !cancelled && setValidators(v)).catch(() => undefined)
-    const id = setInterval(refresh, 10_000)
-    return () => {
-      cancelled = true
-      clearInterval(id)
-    }
+    load()
+    const t = setInterval(load, 20_000)
+    return () => clearInterval(t)
   }, [])
 
-  const stats = useMemo(() => {
-    const timed = blocks.filter((b) => b.timestamp != null && b.height > 0)
-    let avgBlockTime: number | null = null
-    if (timed.length >= 2) {
-      const newest = timed[0]
-      const oldest = timed[timed.length - 1]
-      avgBlockTime = (newest.timestamp! - oldest.timestamp!) / Math.max(1, newest.height - oldest.height)
-    }
-    const txCount = blocks.reduce((sum, b) => sum + blockTxCount(b), 0)
-    return { avgBlockTime, txCount }
+  const blockTimes = useMemo<Bar[]>(() => {
+    const sorted = [...blocks].filter((b) => b.timestamp).sort((a, b) => a.height - b.height)
+    return sorted.slice(1).map((b, i) => {
+      const dt = Math.max(0, b.timestamp! - sorted[i].timestamp!)
+      return {
+        key: b.height,
+        values: [{ value: dt, className: 'fill-[hsl(var(--chart-1))]', label: 'seconds' }],
+        tooltip: `#${b.height.toLocaleString()}: ${dt.toFixed(1)}s after the previous block · ${blockTxCount(b)} txns`,
+      }
+    })
   }, [blocks])
+  const avgBlock = blockTimes.length ? blockTimes.reduce((s, b) => s + b.values[0].value, 0) / blockTimes.length : null
 
-  const latestTransactions = useMemo(
-    () => blocks.flatMap((b) => [...b.transactions].reverse()).filter((t) => t.kind !== 'genesis').slice(0, 10),
-    [blocks],
-  )
-
-  const activeValidators = validators?.filter((v) => v.status === 'active') ?? []
-  const totalStake = activeValidators.reduce((sum, v) => sum + Number(v.effectiveStake || 0), 0)
-  const epoch = blocks.find((b) => b.epoch != null)?.epoch ?? null
-  const shownFinalized = finalizedEpoch ?? (metrics?.finalizedEpoch != null && metrics.finalizedEpoch >= 0 ? metrics.finalizedEpoch : null)
+  const activity = useMemo<Bar[]>(() => {
+    const now = Math.floor(Date.now() / 1000 / 3600)
+    const buckets = Array.from({ length: 24 }, (_, i) => ({ h: now - 23 + i, user: 0, votes: 0 }))
+    for (const t of txs ?? []) {
+      const b = buckets.find((x) => x.h === Math.floor(t.timestamp / 3600))
+      if (!b) continue
+      if (isOracleVote(t)) b.votes++
+      else b.user++
+    }
+    return buckets.map((b) => ({
+      key: b.h,
+      values: [
+        { value: b.votes, className: 'fill-[hsl(var(--chart-3))]', label: 'votes' },
+        { value: b.user, className: 'fill-[hsl(var(--chart-1))]', label: 'transactions' },
+      ],
+      tooltip: `${new Date(b.h * 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${b.user} transactions · ${b.votes} validator votes`,
+    }))
+  }, [txs])
+  const userTxs = (txs ?? []).filter((t) => !isOracleVote(t))
+  const active = (validators ?? []).filter((v) => v.status === 'active')
+  const stake = active.reduce((s, v) => s + Number(v.effectiveStake), 0)
+  const topMarkets = [...(markets ?? [])].sort((a, b) => b.trades_24h - a.trades_24h || Number(b.quote_volume_24h) - Number(a.quote_volume_24h)).slice(0, 8)
+  const sym = (a: string) => (a.includes('-PERP') ? a : assetSymbol(a, tokens))
 
   return (
-    <div className="min-h-screen">
-      <section className="relative overflow-hidden border-b border-border">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-accent/5 to-background" />
-        <div className="container mx-auto px-4 py-14 relative">
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <h1 className="text-4xl md:text-5xl font-bold">QRDX Explorer</h1>
-              <NetworkModeBadge size="md" />
-            </div>
-            <p className="text-lg md:text-xl text-muted-foreground mb-8">
-              Explore the quantum-resistant blockchain in real time
+    <div>
+      <section className="hero-glow border-b">
+        <div className="mx-auto max-w-7xl px-4 pb-10 pt-12">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              <span className={cn('h-1.5 w-1.5 rounded-full', stream.state === 'live' ? 'pulse-dot bg-bid text-bid' : 'bg-muted-foreground')} />
+              {network.name}
             </p>
-            <div className="max-w-3xl mx-auto">
-              <SearchBar />
-            </div>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">The QRDX chain, live</h1>
+            <p className="mt-3 text-base text-muted-foreground">Blocks, transactions, tokens and markets, read from the node as they happen.</p>
+            <button
+              onClick={openSearch}
+              className="mx-auto mt-7 flex h-12 w-full max-w-2xl items-center gap-3 rounded-xl border bg-card px-4 text-left text-muted-foreground shadow-sm transition-colors hover:border-foreground/25"
+            >
+              <Search className="h-4 w-4" />
+              <span className="flex-1 text-sm">Search a block, transaction, address or token</span>
+              <kbd className="rounded border bg-muted px-1.5 text-[11px]">⌘K</kbd>
+            </button>
           </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
-            <div className="glass p-4 rounded-lg border text-center">
-              <Blocks className="h-6 w-6 text-primary mx-auto mb-2" />
-              <div className="text-2xl font-bold font-mono">{height >= 0 ? height.toLocaleString() : '—'}</div>
-              <div className="text-xs text-muted-foreground">Block Height</div>
-            </div>
-            <div className="glass p-4 rounded-lg border text-center">
-              <Layers className="h-6 w-6 text-primary mx-auto mb-2" />
-              <div className="text-2xl font-bold font-mono">{epoch ?? '—'}</div>
-              <div className="text-xs text-muted-foreground">Current Epoch</div>
-            </div>
-            <div className="glass p-4 rounded-lg border text-center">
-              <CheckCircle2 className="h-6 w-6 text-primary mx-auto mb-2" />
-              <div className="text-2xl font-bold font-mono">{shownFinalized ?? '—'}</div>
-              <div className="text-xs text-muted-foreground">Finalized Epoch</div>
-            </div>
-            <div className="glass p-4 rounded-lg border text-center">
-              <Radio className={`h-6 w-6 mx-auto mb-2 ${stream.state === 'live' ? 'text-green-500' : stream.state === 'offline' ? 'text-red-500' : 'text-yellow-500'}`} />
-              <div className="text-2xl font-bold capitalize">{stream.state}</div>
-              <div className="text-xs text-muted-foreground">
-                {stream.transport === 'websocket' ? 'WebSocket feed' : stream.transport === 'sse' ? 'SSE feed' : stream.transport === 'polling' ? 'HTTP polling' : 'Realtime feed'}
-              </div>
-            </div>
+          <div className="mt-10 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+            <Tile label="Block height" icon={<Blocks className="h-4 w-4" />} value={height >= 0 ? `#${height.toLocaleString()}` : '—'} sub={stream.state === 'live' ? 'live' : stream.state} />
+            <Tile label="Finalized epoch" icon={<Layers className="h-4 w-4" />} value={finalizedEpoch ?? '—'} />
+            <Tile label="Block time" icon={<Clock className="h-4 w-4" />} value={avgBlock !== null ? `${avgBlock.toFixed(1)}s` : '—'} sub="average, last 30 blocks" />
+            <Tile label="Validators" icon={<ShieldCheck className="h-4 w-4" />} value={validators ? active.length : '—'} sub={validators ? `${fmtCompact(stake)} QRDX staked` : ''} />
+            <Tile label="Transactions" icon={<Radio className="h-4 w-4" />} value={txs ? userTxs.length : '—'} sub="in the latest 500 indexed" />
+            <Tile
+              label="QRDX"
+              icon={<TrendingUp className="h-4 w-4" />}
+              value={qrdx ? fmtUsd(Number(qrdx.price)) : '—'}
+              sub={qrdx ? <span className={toneOf(qrdx.change24h)}>{qrdx.change24h !== null ? `${fmtPct(qrdx.change24h)} 24h` : `via ${qrdx.source === 'route' ? 'pools' : qrdx.source}`}</span> : 'no USD price'}
+            />
           </div>
         </div>
       </section>
 
-      <section className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard
-            label="Avg Block Time"
-            icon={Clock}
-            value={stats.avgBlockTime != null ? `${stats.avgBlockTime.toFixed(2)}s` : '—'}
-            hint={`Over the last ${blocks.length} blocks`}
-          />
-          <StatCard
-            label="Recent Transactions"
-            icon={Activity}
-            value={formatInteger(stats.txCount)}
-            hint={metrics?.mempoolPending != null ? `${metrics.mempoolPending} pending in mempool` : `In the last ${blocks.length} blocks`}
-          />
-          <StatCard
-            label="Active Validators"
-            icon={ShieldCheck}
-            value={validators ? activeValidators.length : '—'}
-            hint={validators ? `${formatAmount(String(totalStake), 2)} QRDX effective stake` : undefined}
-          />
-          <StatCard
-            label="Connected Peers"
-            icon={Users}
-            value={metrics?.peerCount ?? '—'}
-            hint={metrics?.finalityLagEpochs != null ? `Finality lag: ${metrics.finalityLagEpochs} epoch(s)` : undefined}
-          />
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-8">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Panel title="Block times" icon={<Clock className="h-4 w-4" />} bodyClassName="p-4" right={<span className="text-xs text-muted-foreground">seconds between blocks</span>}>
+            {blockTimes.length ? <Bars bars={blockTimes} height={130} unit="s" /> : <p className="py-10 text-center text-sm text-muted-foreground">Loading blocks…</p>}
+          </Panel>
+          <Panel title="Activity, 24 hours" icon={<BarChart3 className="h-4 w-4" />} bodyClassName="p-4" right={<Link href="/transactions" className="text-xs text-primary hover:underline">All transactions</Link>}>
+            {txs ? <Bars bars={activity} height={130} unit="an hour" /> : <p className="py-10 text-center text-sm text-muted-foreground">Loading…</p>}
+          </Panel>
         </div>
 
-        {error && blocks.length === 0 && (
-          <div className="mb-8">
-            <ErrorState title="Unable to load chain data" error={error} onRetry={reload} />
-          </div>
+        {topMarkets.length > 0 && (
+          <Panel title="Markets" icon={<Coins className="h-4 w-4" />} right={<Link href="/tokens" className="text-xs text-primary hover:underline">All tokens</Link>}>
+            <div className="overflow-x-auto">
+              <table className="num w-full text-sm">
+                <thead className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <tr className="border-b text-left">
+                    <th className="px-4 py-2.5 font-medium">Market</th>
+                    <th className="px-3 py-2.5 text-right font-medium">Last</th>
+                    <th className="px-3 py-2.5 text-right font-medium">24h</th>
+                    <th className="px-3 py-2.5 text-right font-medium">Volume 24h</th>
+                    <th className="px-4 py-2.5 text-right font-medium">Trades</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topMarkets.map((m) => (
+                    <tr key={m.market} className="border-b last:border-b-0 hover:bg-accent/40">
+                      <td className="px-4 py-2.5">
+                        <span className="flex items-center gap-2 font-medium">
+                          {m.type === 'perp' ? (
+                            m.market
+                          ) : (
+                            <>
+                              {m.base.startsWith('0x') ? <Link href={`/address/${m.base}`} className="text-primary hover:underline">{sym(m.base)}</Link> : sym(m.base)}
+                              <span className="text-muted-foreground">/</span>
+                              {m.quote.startsWith('0x') ? <Link href={`/address/${m.quote}`} className="text-primary hover:underline">{sym(m.quote)}</Link> : sym(m.quote)}
+                            </>
+                          )}
+                          <Pill>{m.type === 'perp' ? 'perp' : 'spot'}</Pill>
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right">{m.last_price ? fmtNum(n18(m.last_price), 8) : m.mark_price ? fmtNum(n18(m.mark_price), 4) : '—'}</td>
+                      <td className={cn('px-3 py-2.5 text-right', toneOf(m.change_pct_24h))}>{fmtPct(m.change_pct_24h)}</td>
+                      <td className="px-3 py-2.5 text-right">
+                        {fmtCompact(n18(m.quote_volume_24h))} <span className="text-xs text-muted-foreground">{m.type === 'perp' ? m.quote : sym(m.quote)}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right">{m.trades_24h}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <Card>
-            <div className="p-6 border-b flex items-center justify-between">
-              <h2 className="text-xl font-bold">Latest Blocks</h2>
-              <Link href="/blocks" className="text-sm text-primary hover:underline flex items-center gap-1">
-                View all <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-            <CardContent className="p-0">
-              {loading && blocks.length === 0 ? (
-                <LoadingState label="Loading blocks…" />
-              ) : blocks.length === 0 ? (
-                <EmptyState title="No blocks yet" />
-              ) : (
-                <div className="divide-y">
-                  {blocks.slice(0, 8).map((block) => (
-                    <div key={block.hash} className="flex items-center justify-between gap-4 p-4 hover:bg-muted/50 transition-colors">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="p-2 rounded-lg bg-primary/10">
-                          <Blocks className="h-5 w-5 text-primary" />
-                        </div>
-                        <div className="min-w-0">
-                          <BlockLink height={block.height} className="font-bold" />
-                          <div className="text-xs text-muted-foreground">
-                            <TimeAgo timestamp={block.timestamp} />
-                            {block.slot != null && <> · slot {block.slot}</>}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right min-w-0">
-                        <div className="text-sm font-medium">
-                          {blockTxCount(block)} txn{blockTxCount(block) === 1 ? '' : 's'}
-                          {block.attestationCount > 0 && (
-                            <span className="text-muted-foreground font-normal"> · {block.attestationCount} att.</span>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground flex items-center justify-end gap-1">
-                          {block.proposer ? <>Proposer <AddressLink address={block.proposer} /></> : 'Genesis'}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <div className="p-6 border-b flex items-center justify-between">
-              <h2 className="text-xl font-bold">Latest Transactions</h2>
-              <Link href="/transactions" className="text-sm text-primary hover:underline flex items-center gap-1">
-                View all <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-            <CardContent className="p-0">
-              {loading && blocks.length === 0 ? (
-                <LoadingState label="Loading transactions…" />
-              ) : latestTransactions.length === 0 ? (
-                <EmptyState
-                  title="No recent transactions"
-                  description={`No transactions were included in the last ${blocks.length} blocks.`}
-                />
-              ) : (
-                <div className="divide-y">
-                  {latestTransactions.map((tx) => (
-                    <div key={tx.hash} className="flex items-center justify-between gap-4 p-4 hover:bg-muted/50 transition-colors">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <TxKindBadge kind={tx.kind} />
-                          <TxLink hash={tx.hash} />
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
-                          <AddressLink address={tx.from} /> <ArrowRight className="h-3 w-3" /> <AddressLink address={tx.to} />
-                        </div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="text-sm font-medium">{formatQrdx(tx.value, 4)}</div>
-                        <div className="text-xs text-muted-foreground">
-                          <BlockLink height={tx.blockHeight} /> · <TimeAgo timestamp={tx.timestamp} />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Panel title="Latest blocks" icon={<Blocks className="h-4 w-4" />} right={<Link href="/blocks" className="flex items-center gap-1 text-xs text-primary hover:underline">View all <ArrowRight className="h-3 w-3" /></Link>}>
+            {blocks.slice(0, 10).map((b) => (
+              <div key={b.height} className="flex items-center gap-3 border-b px-4 py-2.5 text-sm last:border-b-0">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
+                  <Blocks className="h-4 w-4 text-muted-foreground" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <BlockLink height={b.height} className="font-medium" />
+                  <span className="block text-xs text-muted-foreground">
+                    <TimeAgo timestamp={b.timestamp} /> · slot {b.slot ?? '—'}
+                  </span>
+                </span>
+                <span className="min-w-0 text-right text-xs text-muted-foreground">
+                  <span className="block">
+                    <span className="num text-foreground">{blockTxCount(b)}</span> txns · {b.attestationCount} att.
+                  </span>
+                  <span className="block truncate">
+                    by <AddressLink address={b.proposer} className="text-xs" />
+                  </span>
+                </span>
+              </div>
+            ))}
+            {!blocks.length && <p className="py-10 text-center text-sm text-muted-foreground">Loading blocks…</p>}
+          </Panel>
+          <Panel title="Latest transactions" icon={<Radio className="h-4 w-4" />} right={<Link href="/transactions" className="flex items-center gap-1 text-xs text-primary hover:underline">View all <ArrowRight className="h-3 w-3" /></Link>}>
+            {userTxs.slice(0, 10).map((t) => (
+              <div key={`${t.tx_hash}:${t.position}`} className="flex items-center gap-3 border-b px-4 py-2.5 text-sm last:border-b-0">
+                <span className={cn('flex h-9 w-9 items-center justify-center rounded-lg', t.status === 'failed' ? 'bg-ask/10' : 'bg-muted')}>
+                  <Radio className={cn('h-4 w-4', t.status === 'failed' ? 'text-ask' : 'text-muted-foreground')} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <TxLink hash={t.tx_hash} />
+                  <span className="block text-xs text-muted-foreground">
+                    {opLabel(t)} · <TimeAgo timestamp={t.timestamp} />
+                  </span>
+                </span>
+                <span className="min-w-0 text-right text-xs text-muted-foreground">
+                  <span className="block">
+                    from <AddressLink address={t.sender} className="text-xs" />
+                  </span>
+                  {t.amount && (
+                    <span className="num block text-foreground">
+                      {fmtNum(t.amount, 4)} {t.asset ? (t.asset.toUpperCase() === 'QRDX' ? 'QRDX' : t.asset.startsWith('0x') ? assetSymbol(t.asset, tokens) : t.asset) : ''}
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
+            {txs && !userTxs.length && <p className="py-10 text-center text-sm text-muted-foreground">Only validator votes recently.</p>}
+            {!txs && <p className="py-10 text-center text-sm text-muted-foreground">Loading transactions…</p>}
+          </Panel>
         </div>
-      </section>
+      </div>
     </div>
   )
 }

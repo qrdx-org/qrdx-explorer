@@ -613,7 +613,11 @@ export async function getBlockRange(
     else missing.push(h)
   }
 
-  if (missing.length && wantSections) {
+  // /get_blocks charges offset/100 + limit/50 against a per-IP budget of 1000 an hour
+  // (qrdx/node/main.py): at a real chain height one call can spend most of it. Read the
+  // range that way only while it is cheap; otherwise block by block (get_block is not costed).
+  const cheap = missing.length > 0 && missing[0] / 100 + (missing[missing.length - 1] - missing[0] + 1) / 50 <= 60
+  if (missing.length && wantSections && cheap) {
     const start = missing[0]
     const count = missing[missing.length - 1] - start + 1
     const blocks = await fetchBlockSections(start, Math.min(count, 512))
@@ -628,7 +632,7 @@ export async function getBlockRange(
   }
 
   const stillMissing = missing.filter((h) => !results.has(h))
-  const CONCURRENCY = 4
+  const CONCURRENCY = 6
   for (let i = 0; i < stillMissing.length; i += CONCURRENCY) {
     const chunk = stillMissing.slice(i, i + CONCURRENCY)
     const blocks = await Promise.all(chunk.map((h) => fetchBlockRow(h)))

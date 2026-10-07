@@ -1,337 +1,85 @@
 # QRDX Explorer
 
-A production-ready blockchain explorer for the QRDX (Quantum Resistant Decentralized eXchange) network. Built with Next.js, React, TypeScript, and Tailwind CSS.
+The block explorer for the QRDX chain: blocks, transactions, accounts, validators, and the chain's native tokens and markets, read live from a QRDX node. Next.js 16, React 19, Tailwind CSS v4, lightweight-charts. Themed like [QRDX Trade](https://trade.qrdx.org): QRDX navy and blue in dark mode, black and white in light mode.
 
-## Features
+## What it shows
 
-- 🔍 **Real-time Blockchain Data**: Live transaction tracking, address monitoring, and block exploration
-- 💰 **Token Holdings**: Track QRC-20, QRC-721, and QRC-1155 tokens with position history
-- 📊 **Price Integration**: Real-time token pricing from QRDX Trade exchange
-- 🧮 **Position Calculation**: Client-side token position tracking from transaction history
-- 💼 **Portfolio Analytics**: P&L tracking, value charts, and detailed analytics
-- � **Multi-Network Support**: Mainnet, Testnet, and Local networks with live status indicators
-- 🔗 **URL Network Parameters**: Share specific network views via URL
-- 🌙 **Dark/Light Theme**: Beautiful theming with system preference support
-- 📱 **Responsive Design**: Optimized for desktop, tablet, and mobile
-- ⚡ **Next.js 15**: Fast page loads with React Server Components
-- 🎨 **shadcn/ui**: Modern, accessible UI components
+- **Home**: live height, finalized epoch, block times (chart), validators, 24-hour activity (chart), every market's last price, change and volume, latest blocks and latest user transactions.
+- **Tokens** (`/tokens`): every native token with its best market, USD price, 24-hour change, 24-hour sparkline, market cap, volume and supply.
+- **Addresses** (`/address/{address}`): a token address is detected (`get_token`) and shown as a **token page**: price chart (candles or line, 5m–1d, with volume), market cap, supply, flags (mintable, freezable), every market and pool it trades in, and recent trades. Any other address is an **account page**: QRDX balance, token holdings valued in USD, 30-day activity chart, full indexed history (filter by kind, validator votes hidden by default), open orders, LP positions, perps account, validator details, and a link to its PnL on QRDX Trade.
+- **Transactions**: hourly activity for the last 24 hours (user transactions against validator votes), activity by type, and the latest indexed transactions. Exchange transactions show their parameters, fills and every account they touched, from the node's index and receipt.
+- **Blocks, validators, network**: block lists and detail, the validator set, and node health (REST, JSON-RPC, WebSocket/SSE, peers, state roots).
+- Search (`⌘K` or `/`) for a block, transaction, address or token symbol.
 
-## Network Configuration
+USD prices are reference data from the QRDX Trade API (`/api/v1/prices`, public index or pool route) and are labelled as such. Everything else comes from the node.
 
-The explorer supports three networks with customizable endpoints:
+## Networks
 
-### Networks
+| Network | Node API | JSON-RPC | Chain ID |
+|---|---|---|---|
+| Testnet (default) | `https://test.qrdx.org` | `https://test.qrdx.org/rpc` | 31337 |
+| Mainnet | `https://node.qrdx.org` | `https://rpc.qrdx.org` | 1337 |
+| Local | `http://127.0.0.1:3007` | `http://127.0.0.1:3007/rpc` | — |
 
-1. **Mainnet** (default)
-   - RPC: `https://rpc.qrdx.org`
-   - Node API: `https://node.qrdx.org`
-   - Chain ID: 1337
+Pick one in the network menu (endpoints are editable). A saved selection from older versions that points at `node.test.qrdx.org` or `rpc.test.qrdx.org` is moved to `test.qrdx.org` automatically.
 
-2. **Testnet**
-   - RPC: `https://rpc.test.qrdx.org`
-   - Node API: `https://node.test.qrdx.org`
-   - Chain ID: 31337
-   - *Endpoints are editable in the network selector*
+Links can name the network: `/tx/{hash}?network=testnet`, `/address/{address}?network=mainnet`. The explorer switches to it, remembers it, and drops the parameter from the URL. QRDX Trade links here this way.
 
-3. **Local Network**
-   - RPC: `http://localhost:3007`
-   - Node API: `http://localhost:3007`
-   - Chain ID: 31337
-   - *Endpoints are editable in the network selector*
+### Environment
 
-### Network Status Indicators
-
-The network selector shows real-time status for each network:
-- 🟢 **Green**: Both RPC and Node API are online
-- 🟡 **Yellow**: Only one service is online (partial)
-- 🔴 **Red**: Both services are offline
-- 🔄 **Gray (pulsing)**: Checking status...
-
-### URL Parameters
-
-You can specify the network via URL parameters on supported pages (`/address/*`, `/tx/*`, `/`):
-
-**Mainnet or Testnet:**
-```
-/address/0x123...?network=testnet
-/tx/0xabc...?network=mainnet
+```env
+# Default network: mainnet | testnet | local (default testnet)
+NEXT_PUBLIC_QRDX_NETWORK=testnet
+# A specific node; shown as Local and used by default
+NEXT_PUBLIC_QRDX_NODE_URL=http://127.0.0.1:3007
+# The trade site and API for the Local network
+NEXT_PUBLIC_QRDX_TRADE_LOCAL_URL=http://127.0.0.1:3100
+NEXT_PUBLIC_QRDX_TRADE_LOCAL_API=http://127.0.0.1:3100/api/v1-test
 ```
 
-**Local Network with custom endpoints:**
-```
-/address/0x123...?network=local&rpc=http://localhost:8545&api=http://localhost:3007
-```
+## Development
 
-The URL parameters will:
-- Override the saved network configuration
-- Automatically connect to the specified network
-- Allow sharing specific network views with others
-
-## Architecture
-
-### Backend Integration
-
-The explorer connects to two backend services:
-
-1. **QRDX Node API** (`http://127.0.0.1:3007`)
-   - Blockchain data (transactions, blocks, addresses)
-   - Token information (QRC-20/721/1155)
-   - Real-time mempool data
-   - See [openapi.json](./openapi.json) for full API specification
-
-2. **QRDX Trade API** (`https://trade.qrdx.org/api/price/<token>`)
-   - Real-time token prices
-   - 24h volume and market cap
-   - Price change percentages
-
-### Key Features Implementation
-
-- **Token Positions**: Calculated client-side from transaction logs (ERC-20 Transfer events)
-- **USD Values**: Fetched from QRDX Trade with 30-second caching
-- **Transaction History**: Paginated loading with full details
-- **Smart Identicons**: Deterministic address avatars (works without backend)
-- **Known Addresses**: Pre-configured metadata for special wallets (treasury, system wallets, etc.)
-
-## Known Addresses
-
-The explorer includes a pre-configured database of special addresses in [lib/known-addresses.json](lib/known-addresses.json). These addresses are automatically recognized and display custom names, descriptions, badges, and images.
-
-### Included Special Addresses:
-
-- **0x...001** - Garbage Collector (System Wallet, Burner)
-- **0x...002** - Community Grant Wallet (Official, Community)
-- **0x...003** - Developer Fund (Official, Development)
-- **0x...004** - Ecosystem Fund (Official, Investment)
-- **0x...005** - Staking Rewards Pool (System Wallet, Rewards)
-- **0x...006** - Marketing & Partnerships (Official, Marketing)
-- **0x...007** - Liquidity Pool Reserve (DeFi, Liquidity)
-- **0x...008** - Treasury Multisig (Official, Multisig, Treasury)
-- **0x...009** - Bug Bounty Program (Official, Security)
-- **0x...00a** - Airdrop Distribution (Official, Airdrop)
-
-### Adding New Known Addresses:
-
-Edit [lib/known-addresses.json](lib/known-addresses.json):
-
-```json
-{
-  "addresses": {
-    "0xYourAddressHere": {
-      "name": "Your Wallet Name",
-      "description": "Description of the wallet's purpose",
-      "image": "/images/wallets/your-image.png",
-      "badges": [
-        {
-          "text": "Official",
-          "color": "primary",
-          "bgColor": "bg-primary/20",
-          "textColor": "text-primary",
-          "borderColor": "border-primary/30"
-        }
-      ],
-      "category": "treasury",
-      "verified": true,
-      "featured": false
-    }
-  }
-}
-```
-
-Available categories: `system`, `treasury`, `defi`, `security`, `distribution`
-
-Badge colors: `primary`, `gray`, `red`, `green`, `blue`, `yellow`, `purple`, `pink`, `cyan`, `orange`, `violet`
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+ or Bun
-- pnpm (recommended) or npm
-- **QRDX Node** running on port 3007 (or configure via environment variable)
-
-### Installation
-
-1. Clone the repository with submodules:
-```bash
-git clone --recursive https://github.com/qrdx-org/qrdx-explorer.git
-cd qrdx-explorer
-```
-
-Or if already cloned, initialize submodules:
-```bash
-git submodule update --init --recursive
-```
-
-2. Install dependencies:
 ```bash
 pnpm install
-# or
-npm install
+pnpm dev          # http://localhost:3000
+pnpm build
 ```
 
-3. Configure environment variables:
-```bash
-cp .env.example .env.local
+Open the dev server at `localhost`, not `127.0.0.1`: Next 16's dev server rejects the HMR socket from other origins and the page will not hydrate.
+
+## Node integration
+
+The explorer reads the node's REST API (rate-limited per endpoint in `lib/qrdx/client.ts`), its JSON-RPC, and its WebSocket/SSE stream. See [docs/NODE_INTEGRATION.md](docs/NODE_INTEGRATION.md) for the full mapping. The main reads:
+
+| Endpoint | Used for |
+|---|---|
+| `get_status`, `get_block`, `get_blocks` | height, blocks (`get_blocks` is cost-limited per IP, so recent blocks are fetched one by one when a range would be expensive) |
+| `get_address_info` | balance, nonce, validator info |
+| `get_latest_transactions`, `get_address_history`, `get_indexed_transaction` | the transaction index: latest, per address (cursor paging, kind filters), and one transaction with the accounts it touched |
+| `get_exchange_receipt` | an exchange transaction's result and fills |
+| `get_token`, `get_tokens`, `get_token_balance` | token detection, the token list, holdings |
+| `get_markets`, `get_candles`, `get_trades` | market tables, price charts, recent trades |
+| `get_pools`, `get_lp_positions`, `get_spot_orders`, `get_perp_account` | pools and an account's trading state |
+| `get_validators` | the validator set |
+
+```text
+app/
+  page.tsx                 home
+  tokens/                  token list
+  address/[address]/       token page or account page
+  transactions/  tx/[hash]/  blocks/  block/[number]/  validators/  network/
+components/
+  address/                 TokenView, AccountView
+  charts/                  PriceChart (lightweight-charts), Bars, Sparkline
+  chrome/                  Logo, SearchDialog, StatusBar
+  explorer/                ChainProvider, HistoryTable, shared UI
+  tx/                      IndexedTxView (exchange transactions)
+lib/qrdx/
+  client.ts                networks, transport, rate limits
+  api.ts                   blocks, transactions, addresses
+  indexed.ts               transaction index, tokens, markets, USD prices, trade links
 ```
-
-Edit `.env.local`:
-```env
-# QRDX Node API URL (default: http://127.0.0.1:3007)
-NEXT_PUBLIC_QRDX_NODE_URL=http://127.0.0.1:3007
-
-# Trade API URL (default: https://trade.qrdx.org/api/price)
-NEXT_PUBLIC_TRADE_API_URL=https://trade.qrdx.org/api/price
-```
-
-4. Run the development server:
-```bash
-pnpm dev
-# or
-npm run dev
-```
-
-5. Open [http://localhost:3000](http://localhost:3000) with your browser.
-
-### Running the QRDX Node
-
-The explorer requires a QRDX node to be running. Make sure you have the QRDX node started:
-
-```bash
-# In your QRDX node directory
-python main.py  # or however you start your node
-```
-
-The node should be accessible at `http://127.0.0.1:3007` (default).
-
-## API Integration
-
-### OpenAPI Endpoints Used
-
-The explorer integrates with these QRDX node endpoints:
-
-- `/get_address_info` - Address balance, nonce, and transaction history
-- `/get_address_tokens` - QRC-20/721/1155 tokens owned by address
-- `/get_token_info` - Token metadata (name, symbol, decimals)
-- `/get_transaction` - Transaction details by hash
-- `/get_block` - Block information
-- `/get_blocks` - Multiple blocks with pagination
-- `/get_status` - Blockchain status (height, last hash)
-- `/get_pending_transactions` - Mempool transactions
-
-### New Endpoints to Implement
-
-Add these endpoints to your QRDX node (as defined in `openapi.json`):
-
-```python
-@app.get("/get_address_tokens")
-def get_address_tokens(address: str, token_type: Optional[str] = None):
-    """Return all QRC-20/721/1155 tokens owned by address"""
-    # Implementation needed
-    pass
-
-@app.get("/get_token_info")
-def get_token_info(token_address: str):
-    """Return token metadata (name, symbol, decimals, etc)"""
-    # Implementation needed
-    pass
-```
-
-### Pricing API
-
-Token prices are fetched from the QRDX Trade exchange:
-
-```
-GET https://trade.qrdx.org/api/price/<token_address_or_symbol>
-
-Response:
-{
-  "token": "QRDX",
-  "price_usd": 3500.00,
-  "volume_24h": 1000000,
-  "change_24h": 5.2,
-  "last_updated": 1706400000
-}
-```
-
-## Project Structure
-
-```
-qrdx-explorer/
-├── app/
-│   ├── page.tsx              # Live dashboard
-│   ├── blocks/               # Block list (auto-updating)
-│   ├── block/[number]/       # Block detail (height or hash)
-│   ├── transactions/         # Transaction list + mempool
-│   ├── tx/[hash]/            # Transaction detail (EVM, native, genesis, exchange)
-│   ├── address/[address]/    # Address / validator detail
-│   ├── addresses/            # Rich list and system wallets
-│   ├── validators/           # Validator set and performance
-│   └── network/              # Node health, streaming, RPC, peers, state roots
-├── components/
-│   ├── explorer/             # ChainProvider, live hooks, shared explorer UI
-│   └── ui/                   # shadcn/ui components
-├── lib/
-│   ├── qrdx/                 # Node integration (REST, JSON-RPC, WebSocket/SSE, decoders)
-│   ├── format.ts             # Display formatting
-│   ├── pricing-api.ts        # Token pricing service (QRDX Trade)
-│   └── known-addresses.ts    # System wallet metadata
-└── docs/NODE_INTEGRATION.md  # How the explorer maps onto the node API
-```
-
-## Node Integration
-
-All chain data comes from the connected QRDX node — see [docs/NODE_INTEGRATION.md](docs/NODE_INTEGRATION.md)
-for the endpoint mapping, realtime transport fallbacks, and node behaviours the explorer accounts for.
-
-```typescript
-import { getBlock, getTransaction, getAddress, ChainStream } from '@/lib/qrdx'
-
-const block = await getBlock(42)                     // or a 64-hex block hash
-const { transaction } = await getTransaction('0x…')  // EVM, native, genesis or exchange
-const account = await getAddress('0xPQ…')            // balance, UTXOs, validator info
-
-const stream = new ChainStream()                     // WebSocket → SSE → polling
-stream.onBlock(({ height }) => console.log('new block', height))
-stream.start()
-```
-
-## Available Scripts
-
-- `pnpm dev` - Start development server
-- `pnpm build` - Build for production
-- `pnpm start` - Start production server
-- `pnpm lint` - Run ESLint
-- `pnpm clean` - Clean build artifacts
-
-## Submodules
-
-This project includes the following git submodules:
-
-- `submodules/qrdx-website` - Main QRDX website components
-- `submodules/qrdx-trade` - QRDX trading platform components
-
-To update submodules:
-```bash
-git submodule update --remote
-```
-
-## Tech Stack
-
-- **Framework**: Next.js 16
-- **UI Library**: React 19
-- **Styling**: Tailwind CSS
-- **Components**: shadcn/ui
-- **Icons**: Lucide React
-- **Theme**: next-themes
-- **Language**: TypeScript
 
 ## License
 
-ISC License - see LICENSE file for details
-
-## QRDX Ecosystem
-
-- [Main Website](https://qrdx.org)
-- [Trading Platform](https://trade.qrdx.org)
-- [Documentation](https://docs.qrdx.org)
-- [GitHub](https://github.com/qrdx-org)
+ISC. See LICENSE.

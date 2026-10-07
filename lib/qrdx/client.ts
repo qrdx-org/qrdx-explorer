@@ -15,30 +15,40 @@ export type NetworkType = 'mainnet' | 'testnet' | 'local'
 export interface NetworkConfig {
   type: NetworkType
   name: string
-  /** Base URL of the node's HTTP API, e.g. http://127.0.0.1:3007 */
+  /** Base URL of the node's HTTP API, e.g. https://test.qrdx.org */
   nodeApiUrl: string
-  /** JSON-RPC endpoint; defaults to `${nodeApiUrl}/rpc`. */
+  /** JSON-RPC endpoint; `${nodeApiUrl}/rpc` unless the network serves it elsewhere. */
   rpcUrl: string
-  /** Expected chain ID (informational — the node reports its own). */
+  /** Expected chain ID (informational: the node reports its own, and the network page shows both). */
   chainId: number
+  /** trade.qrdx.org's API for this network (markets, USD prices); null when it has none. */
+  tradeApiUrl: string | null
+  /** The trading site's base URL, for "Trade" links. */
+  tradeUrl: string | null
 }
 
 const DEFAULT_NODE_URL = 'http://127.0.0.1:3007'
+const TRADE_URL = (process.env.NEXT_PUBLIC_QRDX_TRADE_URL || 'https://trade.qrdx.org').replace(/\/+$/, '')
 
+/** The same networks the wallet and trade.qrdx.org use (qrdx-trade lib/config.ts). */
 export const DEFAULT_NETWORKS: Record<NetworkType, NetworkConfig> = {
   mainnet: {
     type: 'mainnet',
     name: 'QRDX Mainnet',
     nodeApiUrl: 'https://node.qrdx.org',
-    rpcUrl: 'https://node.qrdx.org/rpc',
-    chainId: 88888,
+    rpcUrl: 'https://rpc.qrdx.org',
+    chainId: 1337,
+    tradeApiUrl: `${TRADE_URL}/api/v1`,
+    tradeUrl: TRADE_URL,
   },
   testnet: {
     type: 'testnet',
     name: 'QRDX Testnet',
-    nodeApiUrl: 'https://node.test.qrdx.org',
-    rpcUrl: 'https://node.test.qrdx.org/rpc',
-    chainId: 9999,
+    nodeApiUrl: 'https://test.qrdx.org',
+    rpcUrl: 'https://test.qrdx.org/rpc',
+    chainId: 31337,
+    tradeApiUrl: `${TRADE_URL}/api/v1-test`,
+    tradeUrl: TRADE_URL,
   },
   local: {
     type: 'local',
@@ -46,6 +56,8 @@ export const DEFAULT_NETWORKS: Record<NetworkType, NetworkConfig> = {
     nodeApiUrl: process.env.NEXT_PUBLIC_QRDX_NODE_URL || DEFAULT_NODE_URL,
     rpcUrl: `${process.env.NEXT_PUBLIC_QRDX_NODE_URL || DEFAULT_NODE_URL}/rpc`,
     chainId: 9999,
+    tradeApiUrl: process.env.NEXT_PUBLIC_QRDX_TRADE_LOCAL_API || 'http://127.0.0.1:3100/api/v1-test',
+    tradeUrl: process.env.NEXT_PUBLIC_QRDX_TRADE_LOCAL_URL || 'http://127.0.0.1:3100',
   },
 }
 
@@ -55,32 +67,67 @@ function trimSlash(url: string): string {
   return url.replace(/\/+$/, '')
 }
 
-/** Network used during server rendering and before the saved selection is read. */
+/**
+ * Network used during server rendering and before the saved selection is read:
+ * NEXT_PUBLIC_QRDX_NODE_URL (a specific node, shown as Local), else
+ * NEXT_PUBLIC_QRDX_NETWORK (mainnet | testnet | local), else testnet.
+ */
 export function getDefaultNetwork(): NetworkConfig {
   const envUrl = process.env.NEXT_PUBLIC_QRDX_NODE_URL
   if (envUrl) {
     const nodeApiUrl = trimSlash(envUrl)
     return { ...DEFAULT_NETWORKS.local, nodeApiUrl, rpcUrl: `${nodeApiUrl}/rpc` }
   }
-  return DEFAULT_NETWORKS.local
+  const named = process.env.NEXT_PUBLIC_QRDX_NETWORK as NetworkType | undefined
+  return DEFAULT_NETWORKS[named && named in DEFAULT_NETWORKS ? named : 'testnet']
 }
 
-/** Normalize a (possibly legacy) saved config: JSON-RPC is served at `${nodeApiUrl}/rpc`. */
+/** Hosts that no longer serve a node, and where they moved. */
+const MOVED_HOSTS: Record<string, string> = {
+  'https://node.test.qrdx.org': 'https://test.qrdx.org',
+  'https://rpc.test.qrdx.org': 'https://test.qrdx.org/rpc',
+}
+
+/** Normalize a (possibly legacy) saved config: moved hosts, and JSON-RPC at `${nodeApiUrl}/rpc`. */
 export function normalizeNetworkConfig(config: Partial<NetworkConfig> & { nodeApiUrl: string }): NetworkConfig {
-  const nodeApiUrl = trimSlash(config.nodeApiUrl)
-  const rpcUrl = config.rpcUrl ? trimSlash(config.rpcUrl) : ''
+  const nodeApiUrl = MOVED_HOSTS[trimSlash(config.nodeApiUrl)] ?? trimSlash(config.nodeApiUrl)
+  let rpcUrl = config.rpcUrl ? trimSlash(config.rpcUrl) : ''
+  rpcUrl = MOVED_HOSTS[rpcUrl] ?? rpcUrl
+  if (rpcUrl === 'https://node.test.qrdx.org/rpc') rpcUrl = 'https://test.qrdx.org/rpc'
+  const type = config.type ?? 'local'
+  const defaults = DEFAULT_NETWORKS[type] ?? DEFAULT_NETWORKS.local
   return {
-    type: config.type ?? 'local',
+    type,
     name: config.name ?? 'Custom Network',
-    chainId: config.chainId ?? 0,
+    chainId: config.chainId ?? defaults.chainId,
     nodeApiUrl,
     rpcUrl: rpcUrl && rpcUrl !== nodeApiUrl ? rpcUrl : `${nodeApiUrl}/rpc`,
+    tradeApiUrl: config.tradeApiUrl ?? defaults.tradeApiUrl,
+    tradeUrl: config.tradeUrl ?? defaults.tradeUrl,
   }
 }
 
 /** Active network configuration (browser: persisted selection; server: env default). */
 export function getActiveNetwork(): NetworkConfig {
   if (typeof window !== 'undefined') {
+    try {
+      // Links from other QRDX apps name their network (?network=testnet); remember it.
+      const linked = new URLSearchParams(window.location.search).get('network') as NetworkType | null
+      if (linked && linked in DEFAULT_NETWORKS) {
+        const config = DEFAULT_NETWORKS[linked]
+        const saved = window.localStorage.getItem(NETWORK_STORAGE_KEY)
+        if (!saved || (JSON.parse(saved) as Partial<NetworkConfig>).type !== linked) {
+          window.localStorage.setItem(NETWORK_STORAGE_KEY, JSON.stringify(config))
+        }
+        // Drop it from the URL so a later switch in the network menu is not overridden.
+        const url = new URL(window.location.href)
+        url.searchParams.delete('network')
+        window.history.replaceState(window.history.state, '', url)
+        return config
+      }
+    } catch {
+      // fall through to the saved selection
+    }
     try {
       const saved = window.localStorage.getItem(NETWORK_STORAGE_KEY)
       if (saved) {
@@ -188,6 +235,9 @@ const ENDPOINT_LIMITS: Record<string, [max: number, windowMs: number]> = {
   get_token_info: [7, 1000],
   get_blocks: [3, 1000],
   get_top_addresses: [4, 60_000],
+  get_address_history: [7, 1000],
+  get_latest_transactions: [7, 1000],
+  get_indexed_transaction: [7, 1000],
   get_attestations: [9, 60_000],
   submit_tx: [29, 60_000],
 }
