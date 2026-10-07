@@ -3,13 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Activity, BarChart3, Coins, Gauge, Layers, ShieldCheck, Wallet } from 'lucide-react'
-import AddressAvatar from '@/components/AddressAvatar'
 import ShareAddressDialog from '@/components/ShareAddressDialog'
 import { Bars, type Bar } from '@/components/charts/Bars'
 import { CopyButton } from '@/components/explorer/common'
 import { useTokenMap, useUsdPrices, usdOf } from '@/components/explorer/data'
 import { HistoryTable } from '@/components/explorer/HistoryTable'
-import { Panel, Pill, Row, Tabs, Tile, TokenMark, fmtCompact, fmtNum, fmtUsd, toneOf } from '@/components/explorer/ui'
+import { Panel, Pill, Row, Tabs, Tile, fmtCompact, fmtNum, fmtUsd, toneOf } from '@/components/explorer/ui'
 import { getAddress, type AddressSummary } from '@/lib/qrdx'
 import {
   assetSymbol,
@@ -25,6 +24,9 @@ import {
   type SpotOrder,
 } from '@/lib/qrdx/indexed'
 import { getKnownAddress } from '@/lib/known-addresses'
+import { ClaimedPill, ProfileAvatar, ProfileLinks, TokenAvatar } from '@/components/profile/ProfileBits'
+import { ProfileButton } from '@/components/profile/ProfileButton'
+import { useProfile } from '@/lib/profiles/client'
 import { cn } from '@/lib/utils'
 
 const FORMAT: Record<string, string> = { pq: 'Post-quantum (ML-DSA-65)', evm: 'EVM account', legacy: 'Legacy UTXO' }
@@ -47,6 +49,7 @@ type Tab = 'history' | 'tokens' | 'trading' | 'validator'
 
 export function AccountView({ address }: { address: string }) {
   const known = getKnownAddress(address)
+  const profile = useProfile('account', address)
   const tokens = useTokenMap()
   const [summary, setSummary] = useState<AddressSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -122,16 +125,19 @@ export function AccountView({ address }: { address: string }) {
   const first = nonVote[nonVote.length - 1]
   const last = nonVote[0]
   const positions = Object.entries(perp?.positions ?? {}).filter(([, p]) => Number(p.size) !== 0)
-  const title = known?.name ?? (validator ? 'Validator' : summary?.isContract ? 'Contract' : 'Account')
+  // Curated names win over what an owner says about themselves.
+  const claimed = known ? null : profile?.profile ?? null
+  const title = known?.name ?? claimed?.name ?? (validator ? 'Validator' : summary?.isContract ? 'Contract' : 'Account')
 
   return (
     <div className="space-y-6">
       <section className="hero-glow -mx-4 border-b px-4 pb-6 pt-2">
         <div className="flex flex-wrap items-center gap-4">
-          <AddressAvatar address={address} size={56} imageUrl={known?.image} />
+          <ProfileAvatar address={address} profile={known ? null : profile} size={56} fallbackImage={known?.image} />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
+              {claimed && <ClaimedPill kind="account" />}
               {summary?.format && <Pill>{FORMAT[summary.format]}</Pill>}
               {validator && <Pill tone={validator.status === 'active' ? 'bid' : 'warn'}>{validator.status} validator</Pill>}
               {summary?.isContract && <Pill tone="primary">Contract</Pill>}
@@ -142,9 +148,16 @@ export function AccountView({ address }: { address: string }) {
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <ProfileButton kind="account" subject={address} signer={address} label="this address" profile={known ? null : profile} />
             <ShareAddressDialog address={address} />
           </div>
         </div>
+        {claimed && (claimed.description || claimed.website || claimed.x || claimed.telegram || claimed.github || claimed.discord) && (
+          <div className="mt-4 max-w-3xl space-y-2.5">
+            {claimed.description && <p className="whitespace-pre-line break-words text-sm leading-relaxed text-muted-foreground">{claimed.description}</p>}
+            <ProfileLinks profile={claimed} />
+          </div>
+        )}
         <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
           <Tile
             label="QRDX balance"
@@ -225,7 +238,7 @@ export function AccountView({ address }: { address: string }) {
               const sym = h.asset === 'QRDX' ? 'QRDX' : assetSymbol(h.asset, tokens)
               const body = (
                 <>
-                  <TokenMark symbol={sym} size={32} />
+                  <TokenAvatar address={h.asset === 'QRDX' ? null : h.asset} symbol={sym} size={32} />
                   <span className="min-w-0 flex-1">
                     <span className="block font-medium">{sym}</span>
                     <span className="num block text-xs text-muted-foreground">{fmtNum(h.balance, 6)}</span>

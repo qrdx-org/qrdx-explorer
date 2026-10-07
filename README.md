@@ -10,6 +10,7 @@ The block explorer for the QRDX chain: blocks, transactions, accounts, validator
 - **Transactions**: hourly activity for the last 24 hours (user transactions against validator votes), activity by type, and the latest indexed transactions. Exchange transactions show their parameters, fills and every account they touched, from the node's index and receipt.
 - **Blocks, validators, network**: block lists and detail, the validator set, and node health (REST, JSON-RPC, WebSocket/SSE, peers, state roots).
 - Search (`⌘K` or `/`) for a block, transaction, address or token symbol.
+- **Wallet linking and profiles**: link QRDX Wallet (the browser extension, or the app on a phone by QR code over QRDX Connect, through trade.qrdx.org's relay). Then claim your address by signing a message, and set a display name, image, bio and links (website, X, Telegram, Discord, GitHub). A token's creator can claim the token and set its image, description and links; QRDX Trade and QRDX Wallet show the image. Claimed names show wherever the address appears, marked as claimed by the owner. The explorer never sends transactions. See qrdx-trade [docs/PROFILES.md](https://github.com/qrdx-org/qrdx-trade/blob/main/docs/PROFILES.md).
 
 USD prices are reference data from the QRDX Trade API (`/api/v1/prices`, public index or pool route) and are labelled as such. Everything else comes from the node.
 
@@ -35,6 +36,10 @@ NEXT_PUBLIC_QRDX_NODE_URL=http://127.0.0.1:3007
 # The trade site and API for the Local network
 NEXT_PUBLIC_QRDX_TRADE_LOCAL_URL=http://127.0.0.1:3100
 NEXT_PUBLIC_QRDX_TRADE_LOCAL_API=http://127.0.0.1:3100/api/v1-test
+# QRDX Connect relay and profile service (defaults: trade.qrdx.org/api/relay, /api/profiles).
+# For local work, run the trade repo's relay (pnpm relay:dev) and point both at it.
+NEXT_PUBLIC_QRDX_RELAY_URL=https://trade.qrdx.org/api/relay
+NEXT_PUBLIC_QRDX_PROFILES_URL=https://trade.qrdx.org/api/profiles
 ```
 
 ## Development
@@ -73,11 +78,16 @@ components/
   charts/                  PriceChart (lightweight-charts), Bars, Sparkline
   chrome/                  Logo, SearchDialog, StatusBar
   explorer/                ChainProvider, HistoryTable, shared UI
+  profile/                 ProfileEditor (claim / edit), ProfileButton, avatars and links
   tx/                      IndexedTxView (exchange transactions)
+  wallet/                  ConnectButton and the link dialog
 lib/qrdx/
   client.ts                networks, transport, rate limits
   api.ts                   blocks, transactions, addresses
   indexed.ts               transaction index, tokens, markets, USD prices, trade links
+lib/connect/               QRDX Connect (identical to qrdx-trade's lib/connect)
+lib/wallet/                the wallet link: extension discovery, phone provider, context
+lib/profiles/              claim format (identical to qrdx-trade relay/src/profile-claim.ts), client
 ```
 
 ## License

@@ -8,6 +8,7 @@ import { Wordmark } from './chrome/Logo'
 import { SearchDialog, openSearch } from './chrome/SearchDialog'
 import { ThemeToggle } from './theme-toggle'
 import NetworkSwitcher from './NetworkSwitcher'
+import { ConnectButton } from './wallet/ConnectButton'
 import { cn } from '@/lib/utils'
 
 const NAV_LINKS = [
@@ -47,7 +48,7 @@ export default function Navigation() {
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={openSearch}
-            className="hidden h-8 w-60 items-center gap-2 rounded-md border bg-background px-2.5 text-sm text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground md:flex"
+            className="hidden h-8 w-48 items-center gap-2 xl:w-60 rounded-md border bg-background px-2.5 text-sm text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground md:flex"
           >
             <Search className="h-3.5 w-3.5" />
             <span>Search</span>
@@ -57,6 +58,7 @@ export default function Navigation() {
             <Search className="h-4 w-4" />
           </button>
           <NetworkSwitcher />
+          <ConnectButton />
           <ThemeToggle />
           <button onClick={() => setOpen((o) => !o)} aria-label="Menu" className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent lg:hidden">
             {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}

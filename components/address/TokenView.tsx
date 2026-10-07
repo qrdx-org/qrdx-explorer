@@ -6,7 +6,7 @@ import { ArrowUpRight, BarChart3, Coins, Droplets, ExternalLink, Info, ListOrder
 import { PriceChart } from '@/components/charts/PriceChart'
 import { AddressLink, BlockLink, CopyButton, TimeAgo, TxLink } from '@/components/explorer/common'
 import { useTokenMap, useUsdPrices, usdOf } from '@/components/explorer/data'
-import { Panel, Pill, Row, Tile, TokenMark, fmtCompact, fmtNum, fmtPct, fmtUsd, toneOf } from '@/components/explorer/ui'
+import { Panel, Pill, Row, Tile, fmtCompact, fmtNum, fmtPct, fmtUsd, toneOf } from '@/components/explorer/ui'
 import {
   assetSymbol,
   getMarkets,
@@ -21,6 +21,9 @@ import {
 } from '@/lib/qrdx/indexed'
 import { inv, n18 } from '@/lib/math/decimal'
 import { cn } from '@/lib/utils'
+import { ClaimedPill, ProfileLinks, TokenImage } from '@/components/profile/ProfileBits'
+import { ProfileButton } from '@/components/profile/ProfileButton'
+import { useProfile } from '@/lib/profiles/client'
 
 /** A market seen from the token: its price in the other asset, oriented so the token is the base. */
 function view(t: Ticker, token: string) {
@@ -44,6 +47,8 @@ function view(t: Ticker, token: string) {
 
 export function TokenView({ token }: { token: NativeToken }) {
   const addr = token.token_address.toLowerCase()
+  const profile = useProfile('token', addr)
+  const claimed = profile?.profile ?? null
   const tokens = useTokenMap()
   const [markets, setMarkets] = useState<Ticker[] | null>(null)
   const [pools, setPools] = useState<SpotPool[] | null>(null)
@@ -75,7 +80,7 @@ export function TokenView({ token }: { token: NativeToken }) {
     <div className="space-y-6">
       <section className="hero-glow -mx-4 border-b px-4 pb-6 pt-2">
         <div className="flex flex-wrap items-center gap-4">
-          <TokenMark symbol={token.symbol} size={56} />
+          <TokenImage symbol={token.symbol} profile={profile} size={56} />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{token.name}</h1>
@@ -85,6 +90,7 @@ export function TokenView({ token }: { token: NativeToken }) {
               </Pill>
               {token.mint_authority ? <Pill tone="warn">Mintable</Pill> : <Pill tone="bid">Fixed supply</Pill>}
               {token.freeze_authority && <Pill tone="warn">Freezable</Pill>}
+              {claimed && <ClaimedPill kind="token" />}
             </div>
             <div className="mt-1 flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
               {addr}
@@ -92,6 +98,7 @@ export function TokenView({ token }: { token: NativeToken }) {
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <ProfileButton kind="token" subject={addr} signer={token.creator || null} label={token.symbol} profile={profile} />
             {trade && (
               <a href={trade} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90">
                 Trade {token.symbol} <ArrowUpRight className="h-4 w-4" />
@@ -99,6 +106,12 @@ export function TokenView({ token }: { token: NativeToken }) {
             )}
           </div>
         </div>
+        {claimed && (claimed.description || claimed.website || claimed.x || claimed.telegram || claimed.github || claimed.discord) && (
+          <div className="mt-4 max-w-3xl space-y-2.5">
+            {claimed.description && <p className="whitespace-pre-line break-words text-sm leading-relaxed text-muted-foreground">{claimed.description}</p>}
+            <ProfileLinks profile={claimed} />
+          </div>
+        )}
         <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
           <Tile
             label="Price"
@@ -176,7 +189,7 @@ export function TokenView({ token }: { token: NativeToken }) {
                   <tr key={v.t.market} className="border-b last:border-b-0 hover:bg-accent/40">
                     <td className="px-4 py-2.5">
                       <span className="flex items-center gap-2 font-medium">
-                        <TokenMark symbol={token.symbol} size={20} />
+                        <TokenImage symbol={token.symbol} profile={profile} size={20} />
                         {token.symbol}/
                         {isNativeAsset(v.other) ? (
                           'QRDX'

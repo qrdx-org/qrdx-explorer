@@ -5,9 +5,10 @@ import Link from 'next/link'
 import { Coins, Search } from 'lucide-react'
 import { Sparkline } from '@/components/charts/Bars'
 import { useUsdPrices, usdOf } from '@/components/explorer/data'
-import { Panel, Pill, Tile, TokenMark, fmtCompact, fmtNum, fmtPct, fmtUsd, toneOf } from '@/components/explorer/ui'
+import { Panel, Pill, Tile, fmtCompact, fmtNum, fmtPct, fmtUsd, toneOf } from '@/components/explorer/ui'
 import { getCandles, getMarkets, getTokens, isNativeAsset, type NativeToken, type Ticker } from '@/lib/qrdx/indexed'
 import { inv, n18 } from '@/lib/math/decimal'
+import { TokenAvatar } from '@/components/profile/ProfileBits'
 import { cn } from '@/lib/utils'
 
 interface Row {
@@ -122,7 +123,7 @@ export default function TokensPage() {
                   <tr key={r.token.token_address} className="border-b last:border-b-0 hover:bg-accent/40">
                     <td className="px-4 py-2.5">
                       <Link href={`/address/${r.token.token_address}`} className="flex items-center gap-3">
-                        <TokenMark symbol={r.token.symbol} size={30} />
+                        <TokenAvatar address={r.token.token_address} symbol={r.token.symbol} size={30} />
                         <span className="min-w-0">
                           <span className="block font-medium">
                             {r.token.symbol} {!r.token.mint_authority && <Pill className="ml-1">fixed</Pill>}

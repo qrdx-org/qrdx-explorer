@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { AlertCircle, Check, Copy, Inbox, Loader2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import AddressAvatar from '@/components/AddressAvatar'
+import { ProfileAvatar } from '@/components/profile/ProfileBits'
+import { useProfile } from '@/lib/profiles/client'
 import { formatAddress, formatHash, timeAgo } from '@/lib/format'
 import { getKnownAddress } from '@/lib/known-addresses'
 import type { ExplorerTransaction } from '@/lib/qrdx'
@@ -46,17 +47,20 @@ export function AddressLink({
   copy?: boolean
   className?: string
 }) {
+  // Hooks first: a claimed name shows wherever the address does (docs/PROFILES.md).
+  const profile = useProfile('account', address)
   if (!address) return <span className="text-muted-foreground">—</span>
   const known = getKnownAddress(address)
+  const claimed = !known && !full ? profile?.profile.name : undefined
   return (
     <span className={`inline-flex items-center gap-2 min-w-0 ${className}`}>
-      {avatar && <AddressAvatar address={address} size={20} imageUrl={known?.image} />}
+      {avatar && <ProfileAvatar address={address} profile={known ? null : profile} size={20} fallbackImage={known?.image} />}
       <Link
         href={`/address/${address}`}
-        className="font-mono text-sm text-primary hover:underline truncate"
-        title={address}
+        className={`${claimed ? 'font-medium' : 'font-mono'} text-sm text-primary hover:underline truncate`}
+        title={claimed ? `${claimed} (name claimed by the owner)\n${address}` : address}
       >
-        {known ? known.name : full ? address : formatAddress(address, 8, 6)}
+        {known ? known.name : claimed ?? (full ? address : formatAddress(address, 8, 6))}
       </Link>
       {copy && <CopyButton value={address} />}
     </span>

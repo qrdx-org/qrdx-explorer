@@ -5,6 +5,7 @@ import Navigation from '@/components/Navigation'
 import Footer from '@/components/Footer'
 import { StatusBar } from '@/components/chrome/StatusBar'
 import { ChainProvider } from '@/components/explorer/ChainProvider'
+import { WalletProvider } from '@/lib/wallet/WalletContext'
 import type { Metadata } from 'next'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -60,12 +61,14 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <ChainProvider>
-            <div className="flex min-h-screen flex-col bg-background">
-              <Navigation />
-              <main className="flex-1">{children}</main>
-              <Footer />
-              <StatusBar />
-            </div>
+            <WalletProvider>
+              <div className="flex min-h-screen flex-col bg-background">
+                <Navigation />
+                <main className="flex-1">{children}</main>
+                <Footer />
+                <StatusBar />
+              </div>
+            </WalletProvider>
           </ChainProvider>
         </ThemeProvider>
       </body>
