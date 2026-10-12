@@ -10,6 +10,8 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
       { label: 'Transactions', href: '/transactions' },
       { label: 'Tokens', href: '/tokens' },
       { label: 'Validators', href: '/validators' },
+      { label: 'Consensus', href: '/consensus' },
+      { label: 'Governance', href: '/governance' },
       { label: 'Network', href: '/network' },
     ],
   },

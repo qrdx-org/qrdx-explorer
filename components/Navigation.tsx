@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Activity, Blocks, Coins, Menu, Search, Server, ShieldCheck, X } from 'lucide-react'
+import { Activity, Blocks, Coins, Gavel, Menu, Search, Server, ShieldCheck, Timer, X } from 'lucide-react'
 import { Wordmark } from './chrome/Logo'
 import { SearchDialog, openSearch } from './chrome/SearchDialog'
 import { ThemeToggle } from './theme-toggle'
@@ -16,6 +16,8 @@ const NAV_LINKS = [
   { href: '/transactions', label: 'Transactions', icon: Activity, match: ['/transactions', '/tx/'] },
   { href: '/tokens', label: 'Tokens', icon: Coins, match: ['/tokens'] },
   { href: '/validators', label: 'Validators', icon: ShieldCheck, match: ['/validators'] },
+  { href: '/consensus', label: 'Consensus', icon: Timer, match: ['/consensus'] },
+  { href: '/governance', label: 'Governance', icon: Gavel, match: ['/governance'] },
   { href: '/network', label: 'Network', icon: Server, match: ['/network'] },
 ]
 
@@ -36,11 +38,12 @@ export default function Navigation() {
               <Link
                 key={l.href}
                 href={l.href}
-                className={cn('relative flex h-full items-center gap-1.5 px-3 text-sm transition-colors', active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground')}
+                title={l.label}
+                className={cn('relative flex h-full items-center gap-1.5 px-2.5 text-sm transition-colors 2xl:px-3', active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground')}
               >
                 <l.icon className="h-4 w-4" />
-                {l.label}
-                {active && <span className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-primary" />}
+                <span className="hidden 2xl:inline">{l.label}</span>
+                {active && <span className="absolute inset-x-2.5 -bottom-px h-0.5 rounded-full bg-primary 2xl:inset-x-3" />}
               </Link>
             )
           })}
@@ -66,7 +69,7 @@ export default function Navigation() {
         </div>
       </nav>
       {open && (
-        <div className="grid grid-cols-3 gap-1 border-b bg-card p-2 lg:hidden">
+        <div className="grid grid-cols-4 gap-1 border-b bg-card p-2 lg:hidden">
           {NAV_LINKS.map((l) => (
             <Link key={l.href} href={l.href} className="flex flex-col items-center gap-1 rounded-md py-2.5 text-xs text-muted-foreground hover:bg-accent">
               <l.icon className="h-4 w-4" />

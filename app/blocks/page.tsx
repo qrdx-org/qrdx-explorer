@@ -1,192 +1,143 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Activity, Blocks, ChevronLeft, ChevronRight, ChevronsLeft, Clock, Database, Layers } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { useMemo, useState } from 'react'
+import { Blocks, ChevronLeft, ChevronRight, ChevronsLeft, Clock, Database, Gauge, Layers, Pause, Play, Timer } from 'lucide-react'
 import SearchBar from '@/components/explorer/SearchBar'
 import { useChain } from '@/components/explorer/ChainProvider'
-import { useLiveBlocks } from '@/components/explorer/hooks'
-import {
-  AddressLink,
-  BlockLink,
-  EmptyState,
-  ErrorState,
-  LoadingState,
-  NetworkModeBadge,
-  StatCard,
-  TimeAgo,
-} from '@/components/explorer/common'
-import { blockTxCount, getBlockRange, type ExplorerBlock } from '@/lib/qrdx'
-import { formatHash } from '@/lib/format'
+import { BlockTimeChart, EpochProgress } from '@/components/explorer/consensus'
+import { useChainStats, useHeaders, useLiveBlocks } from '@/components/explorer/hooks'
+import { BlocksTable } from '@/components/explorer/live-blocks'
+import { Panel, Tile } from '@/components/explorer/ui'
+import type { LiveBlock } from '@/lib/qrdx/live'
+import { formatMs } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 25
 
 export default function BlocksPage() {
-  const { height, finalizedEpoch } = useChain()
+  const { clock } = useChain()
+  const stats = useChainStats(64)
   const [page, setPage] = useState(1)
-  const live = useLiveBlocks(PAGE_SIZE, { paused: page !== 1 })
-  const [pageBlocks, setPageBlocks] = useState<ExplorerBlock[]>([])
-  const [pageLoading, setPageLoading] = useState(false)
-  const [pageError, setPageError] = useState<string | null>(null)
+  const [paused, setPaused] = useState(false)
   // Freeze the tip used for paging so pages don't shift while browsing history.
   const [anchor, setAnchor] = useState(-1)
-  const [reloadNonce, setReloadNonce] = useState(0)
+  const live = useLiveBlocks(PAGE_SIZE + 1, { paused: paused || page !== 1 })
 
-  useEffect(() => {
-    if (page === 1 || anchor < 0) return
-    let cancelled = false
-    const top = anchor - (page - 1) * PAGE_SIZE
-    setPageLoading(true)
-    setPageError(null)
-    getBlockRange(top - PAGE_SIZE + 1, top)
-      .then((blocks) => !cancelled && setPageBlocks(blocks))
-      .catch((err) => !cancelled && setPageError(err instanceof Error ? err.message : 'Failed to load blocks'))
-      .finally(() => !cancelled && setPageLoading(false))
-    return () => {
-      cancelled = true
-    }
-  }, [page, anchor, reloadNonce])
-
-  const blocks = page === 1 ? live.blocks : pageBlocks
-  const loading = page === 1 ? live.loading && live.blocks.length === 0 : pageLoading
-  const error = page === 1 ? live.error : pageError
-  const tip = height >= 0 ? height : live.blocks[0]?.height ?? -1
+  const tip = stats.head
   const totalPages = tip >= 0 ? Math.ceil((tip + 1) / PAGE_SIZE) : 1
+  const top = page === 1 ? -1 : anchor - (page - 1) * PAGE_SIZE
+  // The page plus the block below it, so its oldest row has a parent to time against.
+  const heights = useMemo(() => (top < 0 ? [] : Array.from({ length: PAGE_SIZE + 1 }, (_, i) => top - i).filter((h) => h >= 0)), [top])
+  const history = useHeaders(heights, 1)
+  const historyRows = useMemo<LiveBlock[]>(
+    () => heights.map((h) => ({ height: h, hash: history.get(h)?.hash ?? null, observedAt: null, block: history.get(h) ?? null })),
+    [heights, history],
+  )
+
+  const rows = page === 1 ? live.blocks : historyRows
+  const shown = rows.slice(0, PAGE_SIZE)
+  const read = shown.filter((r) => r.block).length
 
   const goTo = (next: number) => {
     if (page === 1 && next !== 1) setAnchor(tip)
     setPage(Math.min(Math.max(1, next), totalPages))
   }
 
-  const avgBlockTime = useMemo(() => {
-    const timed = live.blocks.filter((b) => b.timestamp != null && b.height > 0)
-    if (timed.length < 2) return null
-    const a = timed[0]
-    const b = timed[timed.length - 1]
-    return (a.timestamp! - b.timestamp!) / Math.max(1, a.height - b.height)
-  }, [live.blocks])
-
-  const sectionsMissing = blocks.some((b) => !b.sectionsLoaded)
-
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-3xl font-bold">Blocks</h1>
-          <NetworkModeBadge />
-        </div>
-        <p className="text-muted-foreground mb-6">Every block proposed on the QRDX chain, newest first</p>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <StatCard label="Latest Block" icon={Blocks} value={tip >= 0 ? tip.toLocaleString() : '—'} />
-          <StatCard label="Avg Block Time" icon={Clock} value={avgBlockTime != null ? `${avgBlockTime.toFixed(2)}s` : '—'} />
-          <StatCard label="Current Epoch" icon={Layers} value={live.blocks.find((b) => b.epoch != null)?.epoch ?? '—'} hint={finalizedEpoch != null ? `Finalized through epoch ${finalizedEpoch}` : undefined} />
-          <StatCard label="Total Blocks" icon={Database} value={tip >= 0 ? (tip + 1).toLocaleString() : '—'} hint="Including genesis" />
-        </div>
-
-        <SearchBar placeholder="Search by block number or block hash" size="md" />
+    <div className="mx-auto max-w-7xl space-y-6 px-4 py-8">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Blocks</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Every block on the chain, newest first{clock ? `: one slot every ${formatMs(clock.slotMs)}, ${clock.slotsPerEpoch} slots an epoch` : ''}.
+        </p>
       </div>
 
-      {error && blocks.length === 0 && (
-        <div className="mb-6">
-          <ErrorState title="Error loading blocks" error={error} onRetry={page === 1 ? live.reload : () => setReloadNonce((n) => n + 1)} />
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+        <Tile label="Latest block" icon={<Blocks className="h-4 w-4" />} value={tip >= 0 ? `#${tip.toLocaleString()}` : '—'} sub={tip >= 0 ? `${(tip + 1).toLocaleString()} blocks with genesis` : ''} />
+        <Tile label="Current slot" icon={<Clock className="h-4 w-4" />} value={stats.currentSlot != null ? stats.currentSlot.toLocaleString() : '—'} sub={stats.currentEpoch != null ? `epoch ${stats.currentEpoch.toLocaleString()}` : ''} />
+        <Tile label="Block time" icon={<Timer className="h-4 w-4" />} value={formatMs(stats.avg100Ms ?? stats.avgSinceGenesisMs, 1)} sub={stats.avg100Ms != null ? 'mean, last 100 blocks' : 'mean since genesis'} />
+        <Tile label="Median / p95" icon={<Gauge className="h-4 w-4" />} value={stats.p50Ms != null ? `${formatMs(stats.p50Ms)}` : '—'} sub={stats.p95Ms != null ? `p95 ${formatMs(stats.p95Ms)} · ${stats.intervals.length} blocks` : 'from consecutive headers'} />
+        <Tile
+          label="Missed slots"
+          icon={<Database className="h-4 w-4" />}
+          value={stats.missedSinceGenesis != null ? stats.missedSinceGenesis.toLocaleString() : '—'}
+          sub={stats.fillSinceGenesis != null ? `${(stats.fillSinceGenesis * 100).toFixed(2)}% of slots filled` : 'since genesis'}
+        />
+        <Tile
+          label="Finalized epoch"
+          icon={<Layers className="h-4 w-4" />}
+          value={stats.finalizedEpoch != null ? stats.finalizedEpoch.toLocaleString() : '—'}
+          sub={stats.finalityLagEpochs != null ? `${stats.finalityLagEpochs} behind the clock` : ''}
+        />
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {page === 1 ? 'Latest Blocks' : 'Blocks'}
-            {page === 1 && <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 dark:text-green-400">auto-updating</span>}
-          </CardTitle>
-          <CardDescription>
-            Page {page.toLocaleString()} of {totalPages.toLocaleString()}
-            {sectionsMissing && ' · EVM/exchange counts unavailable for some blocks (node query budget reached)'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <LoadingState label="Loading blocks…" />
-          ) : blocks.length === 0 ? (
-            <EmptyState title="No blocks found" />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50 text-sm">
-                    <th className="text-left p-4 font-medium text-muted-foreground">Block</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Age</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground hidden lg:table-cell">Slot / Epoch</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground hidden md:table-cell">Proposer</th>
-                    <th className="text-right p-4 font-medium text-muted-foreground">Txns</th>
-                    <th className="text-right p-4 font-medium text-muted-foreground hidden xl:table-cell">Attestations</th>
-                    <th className="text-right p-4 font-medium text-muted-foreground hidden sm:table-cell">Finality</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {blocks.map((block) => {
-                    const finalized = finalizedEpoch != null && block.epoch != null && block.epoch <= finalizedEpoch
-                    return (
-                      <tr key={block.hash} className="hover:bg-muted/50 transition-colors">
-                        <td className="p-4">
-                          <BlockLink height={block.height} className="font-bold" />
-                          <div className="text-xs text-muted-foreground font-mono hidden sm:block">{formatHash(block.hash, 8, 6)}</div>
-                        </td>
-                        <td className="p-4 text-sm whitespace-nowrap">
-                          <TimeAgo timestamp={block.timestamp} />
-                        </td>
-                        <td className="p-4 text-sm font-mono hidden lg:table-cell">
-                          {block.slot != null ? `${block.slot} / ${block.epoch}` : '—'}
-                        </td>
-                        <td className="p-4 hidden md:table-cell">
-                          {block.proposer ? <AddressLink address={block.proposer} avatar /> : <span className="text-sm text-muted-foreground">Genesis</span>}
-                        </td>
-                        <td className="p-4 text-right">
-                          <span className="inline-flex items-center gap-1 font-medium">
-                            <Activity className="h-3 w-3 text-muted-foreground" />
-                            {blockTxCount(block)}
-                            {!block.sectionsLoaded && <span className="text-muted-foreground" title="EVM/exchange sections not loaded">+</span>}
-                          </span>
-                        </td>
-                        <td className="p-4 text-right hidden xl:table-cell font-mono text-sm">{block.attestationCount}</td>
-                        <td className="p-4 text-right hidden sm:table-cell">
-                          {block.height === 0 ? (
-                            <span className="text-xs text-muted-foreground">Genesis</span>
-                          ) : finalized ? (
-                            <span className="text-xs px-2 py-0.5 rounded bg-green-500/15 text-green-600 dark:text-green-400">Finalized</span>
-                          ) : finalizedEpoch == null ? (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          ) : (
-                            <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-700 dark:text-yellow-400">Unfinalized</span>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Panel title="Block times" icon={<Timer className="h-4 w-4" />} bodyClassName="p-4" right={<span className="text-xs text-muted-foreground">slots × slot length, per block</span>}>
+          <BlockTimeChart stats={stats} count={64} height={110} />
+        </Panel>
+        <Panel title="Epoch" icon={<Layers className="h-4 w-4" />} bodyClassName="space-y-3 p-4">
+          {clock ? <EpochProgress clock={clock} /> : <p className="text-sm text-muted-foreground">Reading the chain spec…</p>}
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            A block takes its slot&apos;s time, so the gap between two blocks is a whole number of slots. A gap of more than one slot means a proposer missed its slot; the next proposer in line
+            fills the one after.
+          </p>
+        </Panel>
+      </div>
 
-      <div className="flex items-center justify-between mt-6 gap-2">
+      <SearchBar placeholder="Search by block number or block hash" size="md" />
+
+      <Panel
+        title={page === 1 ? (paused ? 'Latest blocks (paused)' : 'Latest blocks') : `Blocks #${Math.max(0, top - PAGE_SIZE + 1).toLocaleString()} – #${top.toLocaleString()}`}
+        icon={<Blocks className="h-4 w-4" />}
+        right={
+          <>
+            {page === 1 && (
+              <button
+                onClick={() => setPaused((p) => !p)}
+                className={cn('flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors hover:bg-accent', paused ? 'border-warn/40 text-warn' : 'text-muted-foreground')}
+                title={paused ? 'Resume the live list' : 'Hold the list still: four blocks arrive every second'}
+              >
+                {paused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+                {paused ? 'Resume' : 'Pause'}
+              </button>
+            )}
+            <span className="num text-xs text-muted-foreground">
+              {read}/{shown.length} headers read
+            </span>
+          </>
+        }
+      >
+        {shown.length === 0 ? <p className="py-12 text-center text-sm text-muted-foreground">Waiting for blocks…</p> : <BlocksTable rows={rows} limit={PAGE_SIZE} live={page === 1 && !paused} />}
+      </Panel>
+
+      <div className="flex items-center justify-between gap-2">
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => goTo(1)} disabled={page === 1} className="gap-1">
+          <PageButton onClick={() => goTo(1)} disabled={page === 1}>
             <ChevronsLeft className="h-4 w-4" /> Latest
-          </Button>
-          <Button variant="outline" onClick={() => goTo(page - 1)} disabled={page === 1} className="gap-1">
+          </PageButton>
+          <PageButton onClick={() => goTo(page - 1)} disabled={page === 1}>
             <ChevronLeft className="h-4 w-4" /> Newer
-          </Button>
+          </PageButton>
         </div>
-        <span className="text-sm text-muted-foreground">
+        <span className="num text-sm text-muted-foreground">
           Page {page.toLocaleString()} of {totalPages.toLocaleString()}
         </span>
-        <Button variant="outline" onClick={() => goTo(page + 1)} disabled={page >= totalPages} className="gap-1">
+        <PageButton onClick={() => goTo(page + 1)} disabled={page >= totalPages}>
           Older <ChevronRight className="h-4 w-4" />
-        </Button>
+        </PageButton>
       </div>
     </div>
+  )
+}
+
+function PageButton({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="flex h-9 items-center gap-1 rounded-md border bg-card px-3 text-sm transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
+    >
+      {children}
+    </button>
   )
 }

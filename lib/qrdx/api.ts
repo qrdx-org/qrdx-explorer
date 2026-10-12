@@ -8,7 +8,10 @@
  *    JSON, legacy: hex); the hash/height/proposer/timestamp columns are canonical.
  *  - `/get_block` returns native tx payloads only. EVM + exchange sections are
  *    only exposed by `/get_blocks`, which is charged against a per-IP query-cost
- *    budget (offset/100 + limit/50 per call, 1000 per hour).
+ *    budget (offset/100 + limit/50 per call, 1000 per hour). With 250 ms slots the
+ *    chain passes height 100,000 in seven hours, after which one call costs the
+ *    whole budget: live views read `/get_block` (8 a second) and the transaction
+ *    index instead.
  *  - Included EVM transactions are not indexed by hash (eth_getTransactionByHash
  *    only covers RPC-executed contract calls), so they are located by scanning
  *    block sections and decoding the raw payloads.
@@ -161,6 +164,44 @@ export const EXCHANGE_OP_NAMES: Record<number, string> = {
   15: 'Stake Deposit',
   16: 'Stake Exit',
   17: 'Remove Pool',
+  18: 'Perp Deposit',
+  19: 'Perp Withdraw',
+  20: 'Set Leverage',
+  21: 'Perp Order',
+  22: 'Perp Cancel',
+  23: 'Vault Deposit',
+  24: 'Vault Withdraw',
+  25: 'Oracle Vote',
+  26: 'Token Mint',
+  27: 'Token Burn',
+  28: 'Token Approve',
+  29: 'Token Transfer From',
+  30: 'Set Token Authority',
+  31: 'Token Freeze',
+  32: 'Token Thaw',
+  33: 'Update Token Metadata',
+  34: 'Set Transfer Fee',
+  35: 'Withdraw Token Fees',
+  36: 'Token Pause',
+  37: 'Token Resume',
+  38: 'Authorize Operator',
+  39: 'Revoke Operator',
+  40: 'Create NFT Collection',
+  41: 'NFT Mint',
+  42: 'NFT Transfer',
+  43: 'NFT Burn',
+  44: 'NFT Approve',
+  45: 'NFT Approve All',
+  46: 'NFT Update',
+  47: 'Set NFT Authority',
+  48: 'Governance Propose',
+  49: 'Governance Vote',
+  50: 'Governance Veto',
+  51: 'Governance Execute',
+  52: 'Bridge Withdraw',
+  53: 'Delegate Stake',
+  54: 'Undelegate Stake',
+  55: 'Set Commission',
 }
 
 // ─── Caches & query-cost budget ─────────────────────────────────────────────────
@@ -558,6 +599,27 @@ async function fetchBlockSections(offset: number, limit: number): Promise<Explor
   }
 }
 
+/**
+ * One block's header and native transactions (/get_block: rate-limited at 8 a second, not
+ * costed). What live views read per block; EVM and exchange counts come from the index.
+ */
+export async function getBlockHeader(height: number): Promise<ExplorerBlock | null> {
+  const cached = cachedBlock(height, false)
+  if (cached) return cached
+  const block = await fetchBlockRow(height)
+  if (block) rememberBlock(block)
+  return block
+}
+
+/**
+ * Whether reading [offset, offset+limit) with its EVM/exchange sections is cheap: /get_blocks
+ * costs offset/100 + limit/50 of 1,000 an hour, so past height ~1,000 a block is read without
+ * sections (the transaction index lists its transactions) rather than spend the budget.
+ */
+function sectionsAffordable(offset: number, limit: number): boolean {
+  return offset / 100 + limit / 50 <= 10
+}
+
 /** Resolve a block by height or 64-hex hash (with or without 0x). */
 export async function getBlock(idOrHash: string | number): Promise<ExplorerBlock | null> {
   let height: number
@@ -570,7 +632,7 @@ export async function getBlock(idOrHash: string | number): Promise<ExplorerBlock
       height = Number(result.block.block_height ?? result.block.id)
       const cached = cachedBlock(height, true)
       if (cached) return cached
-      const withSections = await fetchBlockSections(height, 1)
+      const withSections = sectionsAffordable(height, 1) ? await fetchBlockSections(height, 1) : null
       const block = withSections?.[0] ?? normalizeBlock(result.block, result.transactions ?? [], false)
       rememberBlock(block)
       return block
@@ -585,7 +647,7 @@ export async function getBlock(idOrHash: string | number): Promise<ExplorerBlock
   const cached = cachedBlock(height, true)
   if (cached) return cached
 
-  const withSections = await fetchBlockSections(height, 1)
+  const withSections = sectionsAffordable(height, 1) ? await fetchBlockSections(height, 1) : null
   const block = withSections && withSections[0]?.height === height ? withSections[0] : await fetchBlockRow(height)
   if (block) rememberBlock(block)
   return block
@@ -616,7 +678,7 @@ export async function getBlockRange(
   // /get_blocks charges offset/100 + limit/50 against a per-IP budget of 1000 an hour
   // (qrdx/node/main.py): at a real chain height one call can spend most of it. Read the
   // range that way only while it is cheap; otherwise block by block (get_block is not costed).
-  const cheap = missing.length > 0 && missing[0] / 100 + (missing[missing.length - 1] - missing[0] + 1) / 50 <= 60
+  const cheap = missing.length > 0 && sectionsAffordable(missing[0], missing[missing.length - 1] - missing[0] + 1)
   if (missing.length && wantSections && cheap) {
     const start = missing[0]
     const count = missing[missing.length - 1] - start + 1

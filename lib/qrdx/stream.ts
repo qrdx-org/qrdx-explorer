@@ -1,9 +1,10 @@
 /**
  * Realtime chain feed from a QRDX node.
  *
- * The node publishes `{type:"hello"}`, `{type:"block", height, ts, finalized_epoch}`
- * and `{type:"ping"}` frames over both `ws://node/ws` and `http://node/stream`
- * (SSE) — see qrdx/node/observability.py. Streaming is opt-in on the node
+ * The node publishes `{type:"hello"}`, `{type:"block", height, hash, ts, finalized_epoch}`,
+ * `{type:"reorg", ancestor, orphaned}` and `{type:"ping"}` frames over both
+ * `ws://node/ws` and `http://node/stream` (SSE) — see qrdx/node/observability.py.
+ * At 250 ms slots that is four block frames a second. Streaming is opt-in on the node
  * (QRDX_ENABLE_STREAMING=1): when disabled the WebSocket is refused and the SSE
  * endpoint 404s, so this client degrades to polling `/get_status`.
  *
@@ -18,9 +19,19 @@ export type StreamState = 'connecting' | 'live' | 'polling' | 'offline'
 
 export interface BlockEvent {
   height: number
+  /** Block hash, when the node announced it (not for heights filled in after a gap). */
+  hash: string | null
   /** Node wall-clock seconds when the block was observed. */
   observedAt: number
+  /** Local Date.now() when the frame arrived. */
+  receivedAt: number
   finalizedEpoch: number | null
+}
+
+/** Announced blocks above `ancestor` were replaced by another branch. */
+export interface ReorgEvent {
+  ancestor: number
+  orphaned: string[]
 }
 
 export interface StreamStatus {
@@ -33,16 +44,21 @@ export interface StreamStatus {
 
 type BlockListener = (event: BlockEvent) => void
 type StatusListener = (status: StreamStatus) => void
+type ReorgListener = (event: ReorgEvent) => void
 
 interface NodeFrame {
   type: string
   height?: number
+  hash?: string
   ts?: number
   finalized_epoch?: number | null
   version?: string
+  ancestor?: number
+  orphaned?: string[]
 }
 
-const POLL_INTERVAL_MS = 4000
+/** Without a push stream: a block arrives every slot, so poll the tip every second. */
+const POLL_INTERVAL_MS = 1000
 const HANDSHAKE_TIMEOUT_MS = 6000
 /** The node pings every 30s of silence; treat 75s without frames as a dead socket. */
 const IDLE_TIMEOUT_MS = 75_000
@@ -50,6 +66,9 @@ const IDLE_TIMEOUT_MS = 75_000
 export class ChainStream {
   private readonly blockListeners = new Set<BlockListener>()
   private readonly statusListeners = new Set<StatusListener>()
+  private readonly reorgListeners = new Set<ReorgListener>()
+  /** Smallest (local − node) time seen, in ms: clock skew plus the fastest delivery. */
+  private skewMs: number | null = null
   private status: StreamStatus = { state: 'connecting', transport: null, nodeVersion: null, lastEventAt: null, error: null }
   private ws: WebSocket | null = null
   private sse: EventSource | null = null
@@ -71,6 +90,19 @@ export class ChainStream {
 
   get latestHeight(): number {
     return this.lastHeight
+  }
+
+  /**
+   * Local clock minus the node's, in ms (null until a timed frame arrives). It includes
+   * the fastest delivery seen, so the node's "now" is Date.now() − clockOffsetMs.
+   */
+  get clockOffsetMs(): number | null {
+    return this.skewMs
+  }
+
+  onReorg(listener: ReorgListener): () => void {
+    this.reorgListeners.add(listener)
+    return () => this.reorgListeners.delete(listener)
   }
 
   onBlock(listener: BlockListener): () => void {
@@ -103,16 +135,24 @@ export class ChainStream {
     for (const listener of this.statusListeners) listener(this.status)
   }
 
-  private emitHeight(height: number, observedAt: number, finalizedEpoch: number | null) {
-    this.setStatus({ lastEventAt: Date.now() })
+  private emitHeight(height: number, observedAt: number, finalizedEpoch: number | null, hash: string | null = null) {
+    const receivedAt = Date.now()
+    // Status changes re-render the chrome; at four blocks a second only note activity once a second.
+    if (!this.status.lastEventAt || receivedAt - this.status.lastEventAt > 1000) this.setStatus({ lastEventAt: receivedAt })
     if (height <= this.lastHeight) return
     // The node already caps catch-up bursts; fill any gap left by a reconnect.
     const start = this.lastHeight >= 0 ? Math.max(this.lastHeight + 1, height - 63) : height
     this.lastHeight = height
     for (let h = start; h <= height; h++) {
-      const event = { height: h, observedAt, finalizedEpoch }
+      const event: BlockEvent = { height: h, hash: h === height ? hash : null, observedAt, receivedAt, finalizedEpoch }
       for (const listener of this.blockListeners) listener(event)
     }
+  }
+
+  private noteNodeTime(ts: number | undefined) {
+    if (typeof ts !== 'number') return
+    const skew = Date.now() - ts * 1000
+    this.skewMs = this.skewMs == null ? skew : Math.min(this.skewMs, skew)
   }
 
   private handleFrame(frame: NodeFrame, transport: StreamTransport) {
@@ -125,7 +165,15 @@ export class ChainStream {
     }
     if (frame.type === 'block' && typeof frame.height === 'number') {
       if (this.status.state !== 'live') this.setStatus({ state: 'live', transport, error: null })
-      this.emitHeight(frame.height, frame.ts ?? Date.now() / 1000, frame.finalized_epoch ?? null)
+      this.noteNodeTime(frame.ts)
+      this.emitHeight(frame.height, frame.ts ?? Date.now() / 1000, frame.finalized_epoch ?? null, frame.hash ?? null)
+      return
+    }
+    if (frame.type === 'reorg' && typeof frame.ancestor === 'number') {
+      // Heights above the ancestor will be announced again for the new branch.
+      this.lastHeight = Math.min(this.lastHeight, frame.ancestor)
+      const event: ReorgEvent = { ancestor: frame.ancestor, orphaned: frame.orphaned ?? [] }
+      for (const listener of this.reorgListeners) listener(event)
     }
   }
 
@@ -245,11 +293,11 @@ export class ChainStream {
     if (this.pollTimer) return
     const poll = async () => {
       try {
-        const status = await nodeRequest<{ height: number }>('get_status', { baseUrl: this.nodeUrl, timeoutMs: 8000 })
+        const status = await nodeRequest<{ height: number; last_block_hash?: string | null }>('get_status', { baseUrl: this.nodeUrl, timeoutMs: 8000 })
         if (this.status.state !== 'live' && (this.status.state !== 'polling' || this.status.error !== reason)) {
           this.setStatus({ state: 'polling', transport: 'polling', error: reason })
         }
-        this.emitHeight(status.height, Date.now() / 1000, null)
+        this.emitHeight(status.height, Date.now() / 1000, null, status.last_block_hash ?? null)
       } catch (err) {
         if (this.status.state !== 'live') {
           this.setStatus({ state: 'offline', transport: null, error: err instanceof Error ? err.message : 'Node unreachable' })

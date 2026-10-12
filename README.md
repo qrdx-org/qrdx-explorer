@@ -4,11 +4,15 @@ The block explorer for the QRDX chain: blocks, transactions, accounts, validator
 
 ## What it shows
 
-- **Home**: live height, finalized epoch, block times (chart), validators, 24-hour activity (chart), every market's last price, change and volume, latest blocks and latest user transactions.
+- **Home**: live height and slot, block time, finality, slots filled, throughput, validators, a slot map of the last two epochs, block times per block (chart), 24-hour activity (chart), every market's last price, change and volume, latest blocks and latest user transactions.
 - **Tokens** (`/tokens`): every native token with its best market, USD price, 24-hour change, 24-hour sparkline, market cap, volume and supply.
 - **Addresses** (`/address/{address}`): a token address is detected (`get_token`) and shown as a **token page**: price chart (candles or line, 5m–1d, with volume), market cap, supply, flags (mintable, freezable), every market and pool it trades in, and recent trades. Any other address is an **account page**: QRDX balance, token holdings valued in USD, 30-day activity chart, full indexed history (filter by kind, validator votes hidden by default), open orders, LP positions, perps account, validator details, and a link to its PnL on QRDX Trade.
 - **Transactions**: hourly activity for the last 24 hours (user transactions against validator votes), activity by type, and the latest indexed transactions. Exchange transactions show their parameters, fills and every account they touched, from the node's index and receipt.
-- **Blocks, validators, network**: block lists and detail, the validator set, and node health (REST, JSON-RPC, WebSocket/SSE, peers, state roots).
+- **Blocks** (`/blocks`, `/block/{n}`): a live table (pause it to read: four blocks arrive a second) with slot, epoch position, block time and missed slots, finality and transactions; history pages. A block page has its exact slot time, the slots around it, its epoch, finality (with an estimate while pending), its transactions from the index, attestations and the decoded header.
+- **Consensus** (`/consensus`): the slot clock, a slot map of three epochs, block-time distribution, finality, the chain's identity (chain id, genesis, spec hash, fork id), every chain-spec parameter in readable units, the upgrade schedule and protocol features.
+- **Validators** (`/validators`): each validator's weight (own stake plus delegated), stake, delegation, rewards earned, pool and proposals; delegation pools; staking parameters.
+- **Governance** (`/governance`): proposals with their vote against the threshold, the committee, the master controller, parameters as blocks and time, fork approvals, bridged assets.
+- **Network**: node health, build and fork id, interfaces (REST, JSON-RPC, WebSocket/SSE, chain spec, metrics), peers, state roots, RPC traffic.
 - Search (`⌘K` or `/`) for a block, transaction, address or token symbol.
 - **Wallet linking and profiles**: link QRDX Wallet (the browser extension, or the app on a phone by QR code over QRDX Connect, through trade.qrdx.org's relay). Then claim your address by signing a message, and set a display name, image, bio and links (website, X, Telegram, Discord, GitHub). A token's creator can claim the token and set its image, description and links; QRDX Trade and QRDX Wallet show the image. Claimed names show wherever the address appears, marked as claimed by the owner. The explorer never sends transactions. See qrdx-trade [docs/PROFILES.md](https://github.com/qrdx-org/qrdx-trade/blob/main/docs/PROFILES.md).
 
@@ -18,7 +22,7 @@ USD prices are reference data from the QRDX Trade API (`/api/v1/prices`, public 
 
 | Network | Node API | JSON-RPC | Chain ID |
 |---|---|---|---|
-| Testnet (default) | `https://test.qrdx.org` | `https://test.qrdx.org/rpc` | 31337 |
+| Testnet (default) | `https://test.qrdx.org` | `https://test.qrdx.org/rpc` | 7620 |
 | Mainnet | `https://node.qrdx.org` | `https://rpc.qrdx.org` | 1337 |
 | Local | `http://127.0.0.1:3007` | `http://127.0.0.1:3007/rpc` | — |
 
@@ -65,7 +69,11 @@ The explorer reads the node's REST API (rate-limited per endpoint in `lib/qrdx/c
 | `get_token`, `get_tokens`, `get_token_balance` | token detection, the token list, holdings |
 | `get_markets`, `get_candles`, `get_trades` | market tables, price charts, recent trades |
 | `get_pools`, `get_lp_positions`, `get_spot_orders`, `get_perp_account` | pools and an account's trading state |
-| `get_validators` | the validator set |
+| `get_validators`, `staking_*` | the validator set, weights, delegation pools, staking parameters |
+| `chain_spec` | slot and epoch length, every network parameter, forks |
+| `governance_*`, `bridge_getAssets` | proposals, committee, fork approvals, bridged assets |
+
+At 250 ms slots, block times come from slots (genesis + slot × slot length), live lists from the stream, and headers are read only for the rows on screen, paced under the node's per-IP limit. See [docs/NODE_INTEGRATION.md](docs/NODE_INTEGRATION.md#250-ms-slots).
 
 ```text
 app/
@@ -73,11 +81,12 @@ app/
   tokens/                  token list
   address/[address]/       token page or account page
   transactions/  tx/[hash]/  blocks/  block/[number]/  validators/  network/
+  consensus/  governance/
 components/
   address/                 TokenView, AccountView
   charts/                  PriceChart (lightweight-charts), Bars, Sparkline
   chrome/                  Logo, SearchDialog, StatusBar
-  explorer/                ChainProvider, HistoryTable, shared UI
+  explorer/                ChainProvider, hooks, consensus (slot map, block times, finality), live-blocks, HistoryTable, shared UI
   profile/                 ProfileEditor (claim / edit), ProfileButton, avatars and links
   tx/                      IndexedTxView (exchange transactions)
   wallet/                  ConnectButton and the link dialog
@@ -85,6 +94,9 @@ lib/qrdx/
   client.ts                networks, transport, rate limits
   api.ts                   blocks, transactions, addresses
   indexed.ts               transaction index, tokens, markets, USD prices, trade links
+  stream.ts                WebSocket / SSE / polling feed
+  live.ts                  announced blocks and the headers views read, paced
+  consensus.ts             chain spec, slot clock, staking, governance, bridge
 lib/connect/               QRDX Connect (identical to qrdx-trade's lib/connect)
 lib/wallet/                the wallet link: extension discovery, phone provider, context
 lib/profiles/              claim format (identical to qrdx-trade relay/src/profile-claim.ts), client

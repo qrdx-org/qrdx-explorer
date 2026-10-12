@@ -53,6 +53,17 @@ export function getLatestTransactions(q: HistoryQuery = {}): Promise<IndexedPage
   return nodeRequest<IndexedPage>('get_latest_transactions', { query: { limit: q.limit ?? 50, cursor: q.cursor, kinds: q.kinds } })
 }
 
+/**
+ * One block's transactions from the index: the page that starts just above the block
+ * (cursor "height+1:0" returns rows at or below `height`), kept to that block. `complete`
+ * is false when the block alone filled the page.
+ */
+export async function getBlockTransactions(height: number, limit = 200): Promise<{ transactions: IndexedTx[]; indexedHeight: number; complete: boolean }> {
+  const page = await getLatestTransactions({ cursor: `${height + 1}:0`, limit })
+  const transactions = page.transactions.filter((t) => t.block_height === height).sort((a, b) => a.position - b.position)
+  return { transactions, indexedHeight: page.indexed_height, complete: transactions.length < limit }
+}
+
 export function getAddressHistory(address: string, q: HistoryQuery = {}): Promise<IndexedPage & { address: string; account: string }> {
   return nodeRequest('get_address_history', { query: { address, limit: q.limit ?? 50, cursor: q.cursor, kinds: q.kinds } })
 }

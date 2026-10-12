@@ -1,6 +1,6 @@
 'use client'
 
-import { useChain } from './ChainProvider'
+import { useChain, useHead } from './ChainProvider'
 
 const LABELS = {
   connecting: { dot: 'bg-gray-400 animate-pulse', text: 'Connecting' },
@@ -10,7 +10,8 @@ const LABELS = {
 } as const
 
 export default function LiveIndicator() {
-  const { stream, height, network } = useChain()
+  const { stream, network } = useChain()
+  const height = useHead()
   const label = LABELS[stream.state]
   const transport =
     stream.transport === 'websocket' ? 'WebSocket' : stream.transport === 'sse' ? 'Server-Sent Events' : stream.transport === 'polling' ? 'HTTP polling' : null

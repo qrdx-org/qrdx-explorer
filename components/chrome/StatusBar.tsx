@@ -1,12 +1,27 @@
 'use client'
 
 import { Boxes, Github } from 'lucide-react'
-import { useChain } from '@/components/explorer/ChainProvider'
+import { useChain, useHead, useNodeNow } from '@/components/explorer/ChainProvider'
+import { epochOf, slotAt } from '@/lib/qrdx/consensus'
 import { cn } from '@/lib/utils'
 
-/** Bottom bar: node feed, network, chain tip and finality, and where the data comes from. */
+/** The node clock's slot and epoch, ticking with the slots. */
+function SlotReadout() {
+  const { clock } = useChain()
+  const now = useNodeNow(clock ? Math.min(clock.slotMs, 1000) : 1000)
+  if (!clock || !now) return null
+  const slot = slotAt(clock, now)
+  return (
+    <span className="num hidden lg:inline">
+      · slot {slot.toLocaleString()} · epoch {epochOf(clock, slot).toLocaleString()} · {clock.slotMs} ms slots
+    </span>
+  )
+}
+
+/** Bottom bar: node feed, network, chain tip, slot clock and finality, and where the data comes from. */
 export function StatusBar() {
-  const { stream, height, finalizedEpoch, network } = useChain()
+  const { stream, finalizedEpoch, network } = useChain()
+  const height = useHead()
   const state = stream.state
   return (
     <div className="sticky bottom-0 z-30 flex h-7 items-center gap-4 border-t bg-card px-3 text-[11px] text-muted-foreground">
@@ -30,6 +45,7 @@ export function StatusBar() {
         <span className="flex items-center gap-1.5">
           <Boxes className="h-3 w-3" />
           <span className="num text-foreground/80">#{height.toLocaleString()}</span>
+          <SlotReadout />
           {finalizedEpoch != null && <span className="num hidden md:inline">· finalized epoch {finalizedEpoch.toLocaleString()}</span>}
         </span>
       )}

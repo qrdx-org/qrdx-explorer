@@ -71,11 +71,12 @@ export function Pill({ children, tone = 'muted', className }: { children: React.
   return <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium', tones[tone], className)}>{children}</span>
 }
 
-export function Row({ k, children }: { k: string; children: React.ReactNode }) {
+/** A label and its value. `wrap` lets a long value (a hash) break across lines instead of truncating. */
+export function Row({ k, children, wrap = false }: { k: string; children: React.ReactNode; wrap?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-4 border-b px-4 py-2.5 text-sm last:border-b-0">
       <span className="shrink-0 text-muted-foreground">{k}</span>
-      <span className="num min-w-0 truncate text-right">{children}</span>
+      <span className={cn('num min-w-0 text-right', wrap ? 'break-all' : 'truncate')}>{children}</span>
     </div>
   )
 }

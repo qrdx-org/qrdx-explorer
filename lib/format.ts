@@ -10,9 +10,15 @@ export function formatHash(hash: string | null | undefined, startChars = 10, end
   return formatAddress(hash, startChars, endChars)
 }
 
-export function timeAgo(timestampSeconds: number | null | undefined, nowMs = Date.now()): string {
+/**
+ * "12s ago", "3h 4m ago". `precise` shows tenths of a second under a minute ("0.8s ago"),
+ * for blocks that arrive four times a second.
+ */
+export function timeAgo(timestampSeconds: number | null | undefined, nowMs = Date.now(), precise = false): string {
   if (timestampSeconds == null) return '—'
-  const diff = Math.max(0, Math.floor(nowMs / 1000 - timestampSeconds))
+  const exact = Math.max(0, nowMs / 1000 - timestampSeconds)
+  if (precise && exact < 60) return `${exact.toFixed(1)}s ago`
+  const diff = Math.floor(exact)
   if (diff < 60) return `${diff}s ago`
   const minutes = Math.floor(diff / 60)
   if (minutes < 60) return `${minutes}m ago`
@@ -36,6 +42,15 @@ export function formatDuration(seconds: number | null | undefined): string {
   const h = Math.floor(m / 60)
   if (h < 24) return `${h}h ${m % 60}m`
   return `${Math.floor(h / 24)}d ${h % 24}h`
+}
+
+/** A duration in milliseconds: "250 ms", "1.25 s", "8 s", "4m 16s". */
+export function formatMs(ms: number | null | undefined, digits = 0): string {
+  if (ms == null || !Number.isFinite(ms)) return '—'
+  if (Math.abs(ms) < 1000) return `${ms.toFixed(digits)} ms`
+  if (Math.abs(ms) < 10_000) return `${(ms / 1000).toFixed(2).replace(/\.?0+$/, '')} s`
+  if (Math.abs(ms) < 60_000) return `${(ms / 1000).toFixed(1).replace(/\.0$/, '')} s`
+  return formatDuration(ms / 1000)
 }
 
 /** Format a decimal amount string without losing precision to floats. */

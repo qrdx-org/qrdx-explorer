@@ -4,7 +4,7 @@ import { use, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight, CheckCircle2, ChevronLeft, Clock, Search, XCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useChain } from '@/components/explorer/ChainProvider'
+import { useChain, useHead } from '@/components/explorer/ChainProvider'
 import {
   AddressLink,
   BlockLink,
@@ -202,9 +202,10 @@ function ContractDetails({ tx }: { tx: ExplorerTransaction }) {
   )
 }
 
-function LegacyTransactionPage({ params }: PageProps) {
+function LegacyTransactionPage({ params, onIndexed }: PageProps & { onIndexed: (tx: IndexedTxDetail) => void }) {
   const { hash } = use(params)
-  const { height: tip, finalizedEpoch, subscribeBlocks } = useChain()
+  const { finalizedEpoch } = useChain()
+  const tip = useHead(1000)
   const [lookup, setLookup] = useState<TransactionLookup | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -225,17 +226,19 @@ function LegacyTransactionPage({ params }: PageProps) {
     }
   }, [hash, nonce])
 
-  // If the tx is not on chain yet, watch each new block for it.
+  // Not on chain yet: four blocks arrive a second, so ask the index (one request) rather than read each block.
   const notFound = !loading && !error && lookup && !lookup.transaction
   useEffect(() => {
     if (!notFound) return
-    const needle = strip0x(hash).toLowerCase()
-    return subscribeBlocks(async (event) => {
-      const block = await getBlock(event.height).catch(() => null)
-      const match = block?.transactions.find((t) => strip0x(t.hash).toLowerCase() === needle)
-      if (match) setLookup({ transaction: match, scanned: null, scanLimited: false })
-    })
-  }, [notFound, hash, subscribeBlocks])
+    const id = setInterval(() => {
+      getIndexedTransaction(hash).then((found) => {
+        if (!found) return
+        if (found.kind === 'exchange') onIndexed(found)
+        else setNonce((n) => n + 1)
+      })
+    }, 2000)
+    return () => clearInterval(id)
+  }, [notFound, hash, onIndexed])
 
   const tx = lookup?.transaction ?? null
 
@@ -405,5 +408,5 @@ export default function TransactionPage({ params }: PageProps) {
     )
   }
   if (indexed && indexed.kind === 'exchange') return <IndexedTxView tx={indexed} />
-  return <LegacyTransactionPage params={params} />
+  return <LegacyTransactionPage params={params} onIndexed={setIndexed} />
 }

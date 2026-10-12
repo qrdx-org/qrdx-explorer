@@ -2,17 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Activity, CheckCircle2, Cpu, Globe, Radio, Server, Users, XCircle } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useChain } from '@/components/explorer/ChainProvider'
-import {
-  CopyButton,
-  DetailRow,
-  EmptyState,
-  ErrorState,
-  LoadingState,
-  NetworkModeBadge,
-  StatCard,
-} from '@/components/explorer/common'
+import { useChain, useHead } from '@/components/explorer/ChainProvider'
+import { CopyButton } from '@/components/explorer/common'
+import { Panel, Row, Tile } from '@/components/explorer/ui'
 import {
   getChainStatus,
   getNodeHealth,
@@ -32,25 +24,26 @@ import { formatDuration, formatInteger } from '@/lib/format'
 function Flag({ ok, label }: { ok: boolean | null; label: string }) {
   if (ok == null) return <span className="text-muted-foreground">Unknown</span>
   return (
-    <span className={`inline-flex items-center gap-1 ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+    <span className={`inline-flex items-center gap-1 ${ok ? 'text-bid' : 'text-ask'}`}>
       {ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
       {label}
     </span>
   )
 }
 
-function Root({ value }: { value: string | undefined }) {
+function Hash({ value }: { value: string | undefined | null }) {
   if (!value) return <span className="text-muted-foreground">—</span>
   return (
     <span className="inline-flex items-start gap-1">
-      <span className="font-mono text-xs break-all">{value}</span>
+      <span className="break-all text-left font-mono text-xs">{value}</span>
       <CopyButton value={value} />
     </span>
   )
 }
 
 export default function NetworkPage() {
-  const { network, stream, height } = useChain()
+  const { network, stream, spec } = useChain()
+  const height = useHead(1000)
   const [health, setHealth] = useState<NodeHealth | null>(null)
   const [status, setStatus] = useState<ChainStatus | null>(null)
   const [metrics, setMetrics] = useState<NodeMetrics | null>(null)
@@ -78,173 +71,164 @@ export default function NetworkPage() {
 
   const transportLabel =
     stream.transport === 'websocket' ? 'WebSocket (/ws)' : stream.transport === 'sse' ? 'Server-Sent Events (/stream)' : stream.transport === 'polling' ? 'HTTP polling (/get_status)' : '—'
+  const chainId = spec?.chain_id ?? rpc?.chainId ?? null
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-3xl font-bold">Network</h1>
-          <NetworkModeBadge />
-        </div>
-        <p className="text-muted-foreground">Health, consensus and peer information from the connected node</p>
+    <div className="mx-auto max-w-7xl space-y-6 px-4 py-8">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Network</h1>
+        <p className="mt-1 text-sm text-muted-foreground">The connected node: health, interfaces, peers and state commitments.</p>
       </div>
 
       {health && !health.online && (
-        <div className="mb-6">
-          <ErrorState title="Node unreachable" error={`No response from ${network.nodeApiUrl}/healthz`} onRetry={refresh} />
-        </div>
+        <Panel bodyClassName="flex items-center justify-between gap-4 p-4">
+          <span className="text-sm text-ask">No response from {network.nodeApiUrl}/healthz</span>
+          <button onClick={refresh} className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent">
+            Retry
+          </button>
+        </Panel>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Chain Height" icon={Activity} value={height >= 0 ? height.toLocaleString() : status ? status.height.toLocaleString() : '—'} />
-        <StatCard
-          label="Finalized Epoch"
-          icon={CheckCircle2}
-          value={metrics?.finalizedEpoch != null && metrics.finalizedEpoch >= 0 ? metrics.finalizedEpoch : '—'}
-          hint={metrics ? `Justified ${metrics.justifiedEpoch ?? '—'} · lag ${metrics.finalityLagEpochs ?? '—'} epoch(s)` : undefined}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Tile label="Chain height" icon={<Activity className="h-4 w-4" />} value={height >= 0 ? height.toLocaleString() : status ? status.height.toLocaleString() : '—'} sub={chainId != null ? `chain ID ${chainId}` : ''} />
+        <Tile
+          label="Finalized epoch"
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          value={metrics?.finalizedEpoch != null && metrics.finalizedEpoch >= 0 ? metrics.finalizedEpoch.toLocaleString() : '—'}
+          sub={metrics ? `justified ${metrics.justifiedEpoch ?? '—'} · lag ${metrics.finalityLagEpochs ?? '—'}` : ''}
         />
-        <StatCard label="Peers" icon={Users} value={metrics?.peerCount ?? peers?.length ?? '—'} hint={metrics?.blocksReceivedFromPeers != null ? `${formatInteger(metrics.blocksReceivedFromPeers)} blocks received via p2p` : undefined} />
-        <StatCard label="Mempool" icon={Cpu} value={metrics?.mempoolPending ?? '—'} hint="Pending transactions" />
+        <Tile label="Peers" icon={<Users className="h-4 w-4" />} value={metrics?.peerCount ?? peers?.length ?? '—'} sub={spec?.peers ? `${spec.peers.reporting} announce their fork id` : ''} />
+        <Tile label="Mempool" icon={<Cpu className="h-4 w-4" />} value={metrics?.mempoolPending ?? '—'} sub="pending transactions" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Server className="h-5 w-5" /> Node</CardTitle>
-            <CardDescription>{network.name}</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <DetailRow label="API Endpoint"><span className="font-mono">{network.nodeApiUrl}</span></DetailRow>
-            <DetailRow label="Node ID">{status?.nodeId ? <span className="font-mono break-all">{status.nodeId}</span> : '—'}</DetailRow>
-            <DetailRow label="Version">{health?.version ?? '—'}</DetailRow>
-            <DetailRow label="Uptime">{formatDuration(health?.uptimeSeconds ?? metrics?.uptimeSeconds)}</DetailRow>
-            <DetailRow label="Liveness (/healthz)"><Flag ok={health ? health.online : null} label={health?.online ? 'Up' : 'Down'} /></DetailRow>
-            <DetailRow label="Readiness (/readyz)"><Flag ok={health ? health.ready : null} label={health?.ready ? 'Serving chain data' : 'Not ready'} /></DetailRow>
-            <DetailRow label="Tip Hash">{status?.lastBlockHash ? <Root value={status.lastBlockHash} /> : '—'}</DetailRow>
-          </CardContent>
-        </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel title="Node" icon={<Server className="h-4 w-4" />}>
+          <Row k="API endpoint">
+            <span className="font-mono text-xs">{network.nodeApiUrl}</span>
+          </Row>
+          <Row k="Node ID" wrap>
+            {status?.nodeId ? <span className="font-mono text-xs">{status.nodeId}</span> : '—'}
+          </Row>
+          <Row k="Version">{health?.version ?? spec?.node_version ?? '—'}</Row>
+          <Row k="Build">{spec?.build ? `${spec.build.version} · commit ${spec.build.commit}` : '—'}</Row>
+          <Row k="Network">{spec ? `${spec.network}${spec.dev ? ' (dev)' : ''}` : '—'}</Row>
+          <Row k="Fork ID">{spec ? <span className="font-mono text-xs">{spec.fork_id.hash}</span> : '—'}</Row>
+          <Row k="Uptime">{formatDuration(health?.uptimeSeconds ?? metrics?.uptimeSeconds)}</Row>
+          <Row k="Liveness (/healthz)">
+            <Flag ok={health ? health.online : null} label={health?.online ? 'Up' : 'Down'} />
+          </Row>
+          <Row k="Readiness (/readyz)">
+            <Flag ok={health ? health.ready : null} label={health?.ready ? 'Serving chain data' : 'Not ready'} />
+          </Row>
+          <Row k="Tip hash" wrap>
+            <Hash value={status?.lastBlockHash} />
+          </Row>
+        </Panel>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Radio className="h-5 w-5" /> Interfaces</CardTitle>
-            <CardDescription>APIs the explorer is using on this node</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <DetailRow label="REST API"><Flag ok={status ? true : health ? health.online : null} label="Available" /></DetailRow>
-            <DetailRow label="Realtime Stream">
-              <Flag ok={stream.state === 'live' ? true : stream.state === 'connecting' ? null : false} label={stream.state === 'live' ? 'Streaming' : 'Unavailable'} />
-              <div className="text-xs text-muted-foreground mt-1">
-                Transport: {transportLabel}
-                {metrics?.streamingEnabled === false && ' · streaming disabled on node (QRDX_ENABLE_STREAMING)'}
-                {stream.error && stream.state !== 'live' && ` · ${stream.error}`}
-              </div>
-            </DetailRow>
-            <DetailRow label="JSON-RPC (/rpc)">
-              <Flag ok={rpc ? rpc.available : null} label={rpc?.available ? 'eth_* / web3_* enabled' : 'EVM modules disabled'} />
-              {rpc?.available && (
-                <div className="text-xs text-muted-foreground mt-1">
-                  {rpc.clientVersion} · eth_chainId {rpc.chainId}
-                  {rpc.gasPrice && ` · gas price ${rpc.gasPrice} Gwei`}
-                </div>
-              )}
-              {rpc && !rpc.available && <div className="text-xs text-muted-foreground mt-1">Start the node with QRDX_RPC_ENABLED=true for contract data.</div>}
-            </DetailRow>
-            <DetailRow label="Metrics (/metrics)">
-              <Flag ok={metrics ? true : metricsError ? false : null} label={metrics ? 'Prometheus exporter' : 'Unavailable'} />
-            </DetailRow>
-            <DetailRow label="Stream Subscribers">{metrics?.streamSubscribers ?? '—'}</DetailRow>
-            <DetailRow label="Slashing Events">{metrics?.slashingEvents ?? '—'}</DetailRow>
-            <DetailRow label="Reorgs Handled">{metrics?.reorgs ?? 0}</DetailRow>
-          </CardContent>
-        </Card>
+        <Panel title="Interfaces" icon={<Radio className="h-4 w-4" />}>
+          <Row k="REST API">
+            <Flag ok={status ? true : health ? health.online : null} label="Available" />
+          </Row>
+          <Row k="Realtime stream">
+            <Flag ok={stream.state === 'live' ? true : stream.state === 'connecting' ? null : false} label={stream.state === 'live' ? `Streaming · ${transportLabel}` : 'Unavailable'} />
+          </Row>
+          {metrics?.streamingEnabled === false && <Row k="Note">Streaming disabled on the node (QRDX_ENABLE_STREAMING)</Row>}
+          {stream.error && stream.state !== 'live' && <Row k="Stream error">{stream.error}</Row>}
+          <Row k="JSON-RPC (/rpc)">
+            <Flag ok={rpc ? rpc.available : null} label={rpc?.available ? `${rpc.clientVersion ?? 'enabled'}` : 'EVM modules disabled'} />
+          </Row>
+          {rpc?.gasPrice && <Row k="Gas price">{rpc.gasPrice} Gwei</Row>}
+          <Row k="Chain spec (/chain_spec)">
+            <Flag ok={spec ? true : null} label={spec ? `format ${spec.spec_format}` : 'Not served'} />
+          </Row>
+          <Row k="Metrics (/metrics)">
+            <Flag ok={metrics ? true : metricsError ? false : null} label={metrics ? 'Prometheus exporter' : 'Unavailable'} />
+          </Row>
+          <Row k="Stream subscribers">{metrics?.streamSubscribers ?? '—'}</Row>
+          <Row k="Slashing events">{metrics?.slashingEvents ?? '—'}</Row>
+          <Row k="Reorgs handled">{metrics?.reorgs ?? 0}</Row>
+        </Panel>
       </div>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Globe className="h-5 w-5" /> Peers</CardTitle>
-          <CardDescription>Active, non-banned peers known to this node (<code>/get_nodes</code>)</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {!peers ? (
-            <LoadingState label="Loading peers…" />
-          ) : peers.length === 0 ? (
-            <EmptyState title="No peers" description="This node currently has no active peers." />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="text-left p-4 font-medium text-muted-foreground">Node ID</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">URL</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Visibility</th>
-                    <th className="text-right p-4 font-medium text-muted-foreground">Reputation</th>
+      <Panel title="Peers" icon={<Globe className="h-4 w-4" />} right={<span className="text-xs text-muted-foreground">/get_nodes</span>}>
+        {!peers ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">Loading peers…</p>
+        ) : peers.length === 0 ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">This node has no active peers.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="num w-full text-sm">
+              <thead className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                <tr className="border-b text-left">
+                  <th className="px-4 py-2.5 font-medium">Node ID</th>
+                  <th className="px-3 py-2.5 font-medium">URL</th>
+                  <th className="px-3 py-2.5 font-medium">Visibility</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Reputation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {peers.map((peer) => (
+                  <tr key={peer.nodeId} className="border-b last:border-b-0">
+                    <td className="px-4 py-2 font-mono text-xs">{peer.nodeId}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{peer.url || 'private'}</td>
+                    <td className="px-3 py-2">{peer.isPublic ? 'Public' : 'Private'}</td>
+                    <td className="px-4 py-2 text-right">{peer.reputationScore ?? '—'}</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {peers.map((peer) => (
-                    <tr key={peer.nodeId}>
-                      <td className="p-4 font-mono">{peer.nodeId}</td>
-                      <td className="p-4 font-mono text-muted-foreground">{peer.url || 'private'}</td>
-                      <td className="p-4">{peer.isPublic ? 'Public' : 'Private'}</td>
-                      <td className="p-4 text-right font-mono">{peer.reputationScore ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel title="State commitments" icon={<CheckCircle2 className="h-4 w-4" />} right={<span className="text-xs text-muted-foreground">/get_unified_state_root</span>}>
+          {roots === undefined ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">Loading state roots…</p>
+          ) : roots === null ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">State roots unavailable.</p>
+          ) : (
+            <>
+              <Row k="Unified root" wrap>
+                <Hash value={roots.unifiedStateRoot} />
+              </Row>
+              <Row k="UTXO root" wrap>
+                <Hash value={roots.utxoRoot} />
+              </Row>
+              <Row k="Account root" wrap>
+                <Hash value={roots.accountRoot} />
+              </Row>
+              <Row k="Exchange root" wrap>
+                <Hash value={roots.exchangeRoot} />
+              </Row>
+              <Row k="Token root" wrap>
+                <Hash value={roots.tokenRoot} />
+              </Row>
+              <Row k="Consensus enforced">{roots.enforced ? 'Yes' : 'Observed only'}</Row>
+              {spec?.active_features.includes('incremental_state_root') && <Row k="Commitment">LtHash accumulators, updated per change</Row>}
+            </>
+          )}
+        </Panel>
+
+        <Panel title="RPC traffic" icon={<Activity className="h-4 w-4" />} right={<span className="text-xs text-muted-foreground">since the node started</span>}>
+          {!metrics ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">{metricsError ?? 'Loading metrics…'}</p>
+          ) : metrics.rpcRequests.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">No RPC traffic yet.</p>
+          ) : (
+            <div className="max-h-[380px] divide-y overflow-y-auto">
+              {metrics.rpcRequests.map((m) => (
+                <div key={m.method} className="flex items-center justify-between px-4 py-2 text-sm">
+                  <span className="font-mono text-xs">{m.method}</span>
+                  <span className="num">
+                    {formatInteger(m.count)}
+                    {m.errors > 0 && <span className="text-ask"> ({formatInteger(m.errors)} err)</span>}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>State Commitments</CardTitle>
-            <CardDescription>Unified BLAKE3-512 state root and its domains (<code>/get_unified_state_root</code>)</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {roots === undefined ? (
-              <LoadingState label="Loading state roots…" />
-            ) : roots === null ? (
-              <EmptyState title="State roots unavailable" />
-            ) : (
-              <>
-                <DetailRow label="Unified Root"><Root value={roots.unifiedStateRoot} /></DetailRow>
-                <DetailRow label="UTXO Root"><Root value={roots.utxoRoot} /></DetailRow>
-                <DetailRow label="Account Root"><Root value={roots.accountRoot} /></DetailRow>
-                <DetailRow label="Exchange Root"><Root value={roots.exchangeRoot} /></DetailRow>
-                <DetailRow label="Token Root"><Root value={roots.tokenRoot} /></DetailRow>
-                <DetailRow label="Consensus Enforced">{roots.enforced ? 'Yes' : 'Observed only'}</DetailRow>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>RPC Traffic</CardTitle>
-            <CardDescription>JSON-RPC calls handled by this node since start</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            {!metrics ? (
-              metricsError ? <EmptyState title="Metrics unavailable" description={metricsError} /> : <LoadingState label="Loading metrics…" />
-            ) : metrics.rpcRequests.length === 0 ? (
-              <EmptyState title="No RPC traffic yet" />
-            ) : (
-              <div className="divide-y max-h-[380px] overflow-y-auto">
-                {metrics.rpcRequests.map((m) => (
-                  <div key={m.method} className="flex items-center justify-between px-6 py-2 text-sm">
-                    <span className="font-mono">{m.method}</span>
-                    <span className="font-mono">
-                      {formatInteger(m.count)}
-                      {m.errors > 0 && <span className="text-red-500"> ({formatInteger(m.errors)} err)</span>}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        </Panel>
       </div>
     </div>
   )

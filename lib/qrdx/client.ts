@@ -46,7 +46,7 @@ export const DEFAULT_NETWORKS: Record<NetworkType, NetworkConfig> = {
     name: 'QRDX Testnet',
     nodeApiUrl: 'https://test.qrdx.org',
     rpcUrl: 'https://test.qrdx.org/rpc',
-    chainId: 31337,
+    chainId: 7620,
     tradeApiUrl: `${TRADE_URL}/api/v1-test`,
     tradeUrl: TRADE_URL,
   },
@@ -99,7 +99,8 @@ export function normalizeNetworkConfig(config: Partial<NetworkConfig> & { nodeAp
   return {
     type,
     name: config.name ?? 'Custom Network',
-    chainId: config.chainId ?? defaults.chainId,
+    // The built-in networks' ids are fixed by their chain specs; a saved copy may predate a reset.
+    chainId: type === 'local' ? (config.chainId ?? defaults.chainId) : defaults.chainId,
     nodeApiUrl,
     rpcUrl: rpcUrl && rpcUrl !== nodeApiUrl ? rpcUrl : `${nodeApiUrl}/rpc`,
     tradeApiUrl: config.tradeApiUrl ?? defaults.tradeApiUrl,
@@ -199,8 +200,15 @@ class SlidingWindowLimiter {
   private readonly sent: number[] = []
   private readonly queue: Array<() => void> = []
   private timer: ReturnType<typeof setTimeout> | null = null
+  /**
+   * Per-second windows are also spaced evenly: the node counts fixed windows, and a burst
+   * that arrives late can land in the same window as the next one.
+   */
+  private readonly gapMs: number
 
-  constructor(private readonly max: number, private readonly windowMs: number) {}
+  constructor(private readonly max: number, private readonly windowMs: number) {
+    this.gapMs = windowMs <= 1000 ? Math.floor(windowMs / max) : 0
+  }
 
   acquire(): Promise<void> {
     return new Promise((resolve) => {
@@ -213,11 +221,16 @@ class SlidingWindowLimiter {
     const now = Date.now()
     while (this.sent.length && now - this.sent[0] >= this.windowMs) this.sent.shift()
     while (this.queue.length && this.sent.length < this.max) {
+      const last = this.sent[this.sent.length - 1]
+      if (this.gapMs && last !== undefined && now - last < this.gapMs) break
       this.sent.push(now)
       this.queue.shift()!()
     }
     if (this.queue.length && !this.timer) {
-      const wait = Math.max(10, this.windowMs - (now - this.sent[0]) + 5)
+      const last = this.sent[this.sent.length - 1] ?? now
+      const untilGap = this.gapMs ? this.gapMs - (now - last) : 0
+      const untilWindow = this.sent.length >= this.max ? this.windowMs - (now - this.sent[0]) : 0
+      const wait = Math.max(10, untilGap, untilWindow + 5)
       this.timer = setTimeout(() => {
         this.timer = null
         this.drain()
@@ -226,9 +239,9 @@ class SlidingWindowLimiter {
   }
 }
 
-/** Limits from the @limiter.limit decorators in qrdx/node/main.py, kept one request under. */
+/** Limits from the @limiter.limit decorators in qrdx/node/main.py, kept one request under (get_block two: blocks are read continuously, and network jitter can bunch arrivals into one of the node's fixed windows). */
 const ENDPOINT_LIMITS: Record<string, [max: number, windowMs: number]> = {
-  get_block: [7, 1000],
+  get_block: [6, 1000],
   get_transaction: [7, 1000],
   get_address_info: [7, 1000],
   get_address_tokens: [7, 1000],

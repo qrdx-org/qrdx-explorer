@@ -68,6 +68,8 @@ export function AddressLink({
 }
 
 export function TxLink({ hash, full = false, className = '' }: { hash: string; full?: boolean; className?: string }) {
+  // The index reports genesis allocations' hashes as Python bytes reprs ("b'\\xe9…'"): nothing to link to.
+  if (!/^(0x)?[0-9a-fA-F]+$/.test(hash)) return <span className={`font-mono text-sm text-muted-foreground ${className}`}>no hash</span>
   return (
     <Link href={`/tx/${hash}`} className={`font-mono text-sm text-primary hover:underline truncate ${className}`} title={hash}>
       {full ? hash : formatHash(hash)}
@@ -84,13 +86,23 @@ export function BlockLink({ height, className = '' }: { height: number | null | 
   )
 }
 
-export function TimeAgo({ timestamp }: { timestamp: number | null | undefined }) {
-  const now = useNow(1000)
+/**
+ * A relative time that keeps itself current. `timestamp` is unix seconds and may be
+ * fractional; `precise` ticks four times a second and shows tenths under a minute.
+ */
+export function TimeAgo({ timestamp, precise = false }: { timestamp: number | null | undefined; precise?: boolean }) {
+  const now = useNow(precise ? 250 : 1000)
   return (
-    <span title={timestamp ? new Date(timestamp * 1000).toLocaleString() : undefined}>
-      {timeAgo(timestamp, now)}
+    <span className="num" title={timestamp ? formatPreciseTime(timestamp) : undefined}>
+      {now ? timeAgo(timestamp, now, precise) : '—'}
     </span>
   )
+}
+
+/** Local date and time with milliseconds, for times known to the millisecond (slot times). */
+export function formatPreciseTime(timestampSeconds: number): string {
+  const d = new Date(timestampSeconds * 1000)
+  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour12: false })}.${String(d.getMilliseconds()).padStart(3, '0')}`
 }
 
 const KIND_STYLES: Record<ExplorerTransaction['kind'], { label: string; className: string }> = {
