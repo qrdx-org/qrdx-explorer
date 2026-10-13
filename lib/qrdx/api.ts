@@ -573,9 +573,9 @@ export async function getRpcInfo(): Promise<RpcInfo> {
 
 // ─── Blocks ─────────────────────────────────────────────────────────────────────
 
-async function fetchBlockRow(height: number): Promise<ExplorerBlock | null> {
+async function fetchBlockRow(height: number, retryRateLimited = true): Promise<ExplorerBlock | null> {
   try {
-    const result = await nodeRequest<RawGetBlock>('get_block', { query: { block: height } })
+    const result = await nodeRequest<RawGetBlock>('get_block', { query: { block: height }, retryRateLimited })
     return normalizeBlock(result.block, result.transactions ?? [], false)
   } catch (err) {
     // The node answers 400 "Invalid block height" for heights above the tip.
@@ -606,7 +606,8 @@ async function fetchBlockSections(offset: number, limit: number): Promise<Explor
 export async function getBlockHeader(height: number): Promise<ExplorerBlock | null> {
   const cached = cachedBlock(height, false)
   if (cached) return cached
-  const block = await fetchBlockRow(height)
+  // The live store paces these and backs off on a 429 itself: no waiting retries here.
+  const block = await fetchBlockRow(height, false)
   if (block) rememberBlock(block)
   return block
 }

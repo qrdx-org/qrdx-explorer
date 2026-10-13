@@ -53,3 +53,5 @@ pnpm-lock.yaml
 #/submodules/*
 /submodules/qrdx-chain/
 #/submodules
+# wrangler dev local state
+.wrangler

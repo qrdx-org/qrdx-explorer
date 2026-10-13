@@ -23,8 +23,15 @@ export interface LiveBlock {
 
 /** Heights kept: five minutes of 250 ms blocks. Heights a view still wants are kept regardless. */
 const KEEP = 1200
-/** Header fetches a second: the client paces /get_block at 6 a second (the node allows 8), leaving room for other reads. */
+/** Header fetches a second at most: the client paces /get_block at 6 a second (the node allows 8). */
 const RATE = 5.5
+/**
+ * At least this many a second. The node's limit is per client IP, and a node behind a proxy
+ * that does not pass the visitor's IP on counts every visitor as one: the pump halves its
+ * rate on each refused or failed read and climbs back while reads succeed.
+ */
+const MIN_RATE = 0.5
+const RECOVER_PER_SEC = 0.5
 const BURST = 4
 const CONCURRENCY = 4
 const NOTIFY_MS = 120
@@ -41,6 +48,8 @@ export class LiveChain {
   private pumpTimer: ReturnType<typeof setInterval> | null = null
   private tokens = BURST
   private refilledAt = Date.now()
+  private rate = RATE
+  private backedOffAt = 0
   private epoch = 0
 
   /** Highest height announced or reported. */
@@ -165,7 +174,10 @@ export class LiveChain {
 
   private pump() {
     const now = Date.now()
-    this.tokens = Math.min(BURST, this.tokens + ((now - this.refilledAt) / 1000) * RATE)
+    const elapsed = (now - this.refilledAt) / 1000
+    // Climb back towards the full rate a second after the last refusal.
+    if (now - this.backedOffAt > 1000) this.rate = Math.min(RATE, this.rate + elapsed * RECOVER_PER_SEC)
+    this.tokens = Math.min(BURST, this.tokens + elapsed * this.rate)
     this.refilledAt = now
     if (typeof document !== 'undefined' && document.hidden) return
     if (this.tokens < 1 || this.inflight.size >= CONCURRENCY) return
@@ -177,6 +189,20 @@ export class LiveChain {
       this.tokens -= 1
       this.fetch(h)
     }
+  }
+
+  /** A read was refused (429) or failed: halve the rate, at most once a second. */
+  private backOff() {
+    const now = Date.now()
+    if (now - this.backedOffAt < 1000) return
+    this.backedOffAt = now
+    this.rate = Math.max(MIN_RATE, this.rate / 2)
+    this.tokens = Math.min(this.tokens, 0)
+  }
+
+  /** Header reads a second the store is allowed now (for the network page). */
+  get readRate(): number {
+    return this.rate
   }
 
   private fetch(height: number) {
@@ -200,7 +226,9 @@ export class LiveChain {
         this.changed()
       })
       .catch(() => {
-        if (epoch === this.epoch) this.failedAt.set(height, Date.now())
+        if (epoch !== this.epoch) return
+        this.failedAt.set(height, Date.now())
+        this.backOff()
       })
       .finally(() => this.inflight.delete(height))
   }

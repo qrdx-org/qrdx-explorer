@@ -197,7 +197,7 @@ export class RpcError extends Error {
  * slowapi's windowed limits (a token bucket would let burst + refill exceed them).
  */
 class SlidingWindowLimiter {
-  private readonly sent: number[] = []
+  private readonly sent: number[]
   private readonly queue: Array<() => void> = []
   private timer: ReturnType<typeof setTimeout> | null = null
   /**
@@ -206,8 +206,35 @@ class SlidingWindowLimiter {
    */
   private readonly gapMs: number
 
-  constructor(private readonly max: number, private readonly windowMs: number) {
+  /**
+   * `storageKey`: carry the window across page loads in this tab (sessionStorage). The node
+   * counts requests per IP regardless of reloads, so a fresh page that started with an empty
+   * window could send a second's allowance on top of what the last page just sent: 429s,
+   * which Safari reports as CORS failures (the node's 429 carries no CORS headers).
+   */
+  constructor(private readonly max: number, private readonly windowMs: number, private readonly storageKey?: string) {
     this.gapMs = windowMs <= 1000 ? Math.floor(windowMs / max) : 0
+    this.sent = this.load()
+  }
+
+  private load(): number[] {
+    if (!this.storageKey || typeof sessionStorage === 'undefined') return []
+    try {
+      const now = Date.now()
+      const saved = JSON.parse(sessionStorage.getItem(this.storageKey) ?? '[]')
+      return Array.isArray(saved) ? saved.filter((t): t is number => typeof t === 'number' && now - t < this.windowMs && t <= now).sort((a, b) => a - b) : []
+    } catch {
+      return []
+    }
+  }
+
+  private save() {
+    if (!this.storageKey) return
+    try {
+      sessionStorage.setItem(this.storageKey, JSON.stringify(this.sent))
+    } catch {
+      /* the window then lasts as long as this page */
+    }
   }
 
   acquire(): Promise<void> {
@@ -225,6 +252,7 @@ class SlidingWindowLimiter {
       if (this.gapMs && last !== undefined && now - last < this.gapMs) break
       this.sent.push(now)
       this.queue.shift()!()
+      this.save()
     }
     if (this.queue.length && !this.timer) {
       const last = this.sent[this.sent.length - 1] ?? now
@@ -263,7 +291,8 @@ function limiterFor(endpoint: string): SlidingWindowLimiter | null {
   const key = `${getNodeUrl()}|${endpoint}`
   let limiter = limiters.get(key)
   if (!limiter) {
-    limiter = new SlidingWindowLimiter(limit[0], limit[1])
+    // Per-second windows are short enough to carry across a reload; minute windows are not kept.
+    limiter = new SlidingWindowLimiter(limit[0], limit[1], limit[1] <= 1000 ? `qrdx-explorer:rl:${key}` : undefined)
     limiters.set(key, limiter)
   }
   return limiter
@@ -281,6 +310,8 @@ interface RequestOptions {
   signal?: AbortSignal
   /** Base URL override (e.g. when probing a network that is not active). */
   baseUrl?: string
+  /** Wait and retry on 429 (default). Off for callers that pace themselves and back off (the live block store). */
+  retryRateLimited?: boolean
 }
 
 function extractErrorMessage(payload: unknown, fallback: string): string {
@@ -356,7 +387,7 @@ export async function nodeRequest<T>(endpoint: string, options: RequestOptions =
     const { status, payload } = await rawRequest(endpoint, options)
 
     // Another tab or a previous page load may share this IP's window on the node.
-    if (status === 429 && attempt < 2) {
+    if (status === 429 && attempt < 2 && options.retryRateLimited !== false) {
       attempt++
       await new Promise((r) => setTimeout(r, 1000 * attempt))
       continue

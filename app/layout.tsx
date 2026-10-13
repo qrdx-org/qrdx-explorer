@@ -4,6 +4,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import Navigation from '@/components/Navigation'
 import Footer from '@/components/Footer'
 import { StatusBar } from '@/components/chrome/StatusBar'
+import { StaleBuildGuard } from '@/components/StaleBuildGuard'
 import { ChainProvider } from '@/components/explorer/ChainProvider'
 import { WalletProvider } from '@/lib/wallet/WalletContext'
 import type { Metadata } from 'next'
@@ -54,6 +55,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} ${inter.variable} ${mono.variable}`}>
+        <StaleBuildGuard />
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"

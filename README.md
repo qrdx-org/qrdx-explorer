@@ -56,6 +56,16 @@ pnpm build
 
 Open the dev server at `localhost`, not `127.0.0.1`: Next 16's dev server rejects the HMR socket from other origins and the page will not hydrate.
 
+### Deploying (Cloudflare Workers)
+
+`pnpm pages:deploy` builds with OpenNext, patches the bundle (`scripts/patch-open-next.mjs`) and deploys. The Worker renders nothing per request:
+
+- Every page is prerendered. Addresses, blocks and transactions are one shell page each (`/address/_`, `/block/_`, `/tx/_`): `next.config.mjs` rewrites `/address/:address` (and the others) to it, and the page reads which address from the URL in the browser (`components/explorer/route-segment.ts`). URLs are unchanged.
+- `open-next.config.ts` serves prerendered pages from the Worker's static assets with cache interception, so the Next server is not even loaded for them. A server render cost up to 13 ms of CPU, over the 10 ms limit (Cloudflare error 1102).
+- `wrangler.toml` sets `keep_names = false`: with function names kept, esbuild wraps functions in `__name()`, and the theme script next-themes inlines into every page threw "__name is not defined" in the browser.
+
+A page that crashes shows the error and offers to try again or reset what the explorer saved in the browser (`app/error.tsx`, `app/global-error.tsx`, `lib/recovery.ts`); after a deploy, a page still on the old build reloads once.
+
 ## Node integration
 
 The explorer reads the node's REST API (rate-limited per endpoint in `lib/qrdx/client.ts`), its JSON-RPC, and its WebSocket/SSE stream. See [docs/NODE_INTEGRATION.md](docs/NODE_INTEGRATION.md) for the full mapping. The main reads:

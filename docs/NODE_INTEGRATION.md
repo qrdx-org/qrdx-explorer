@@ -60,6 +60,16 @@ epoch) the chain makes four blocks a second. What changed in the explorer:
 - **Transaction counts come from the index**, polled every two seconds for the whole page, not from block
   sections.
 - **Pages that need only the clock read no headers** (`useChainStats(0)`): governance, validators, a block page.
+- **The node's limits may be shared by every visitor.** The node rate-limits by client IP, and a node
+  behind a proxy that does not pass the visitor's IP on (uvicorn trusts `X-Forwarded-For` only from
+  `FORWARDED_ALLOW_IPS`, default 127.0.0.1; a `cloudflared` sidecar is another container) counts all its
+  visitors as one. The header pump therefore halves its rate on every refused or failed read and climbs back
+  0.5 a second while reads succeed, and it does not use `nodeRequest`'s waiting 429 retries. The client's
+  per-second windows are kept in `sessionStorage`, so a reload does not start a fresh second on top of the
+  last page's. Running the node with `FORWARDED_ALLOW_IPS='*'` (behind the tunnel only) restores
+  per-visitor limits.
+- **A 429 carries no CORS headers**, so Safari reports it as a CORS failure ("due to access control
+  checks"); the client treats it like any failed read.
 | `POST /submit_tx` | Native transaction submission (`submitNativeTransaction`) |
 
 ## Node behaviours the explorer works around
