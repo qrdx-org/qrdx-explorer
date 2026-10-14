@@ -613,6 +613,33 @@ export async function getBlockHeader(height: number): Promise<ExplorerBlock | nu
 }
 
 /**
+ * Headers for `count` consecutive heights from `from`, in one JSON-RPC call: `p2p_getBlocks`
+ * (qrdx/rpc/modules/p2p.py), the range peers sync with. Each block comes with its native
+ * transactions and its EVM and exchange sections, like /get_blocks, but the call is not
+ * charged against the per-IP query budget, and JSON-RPC allows 50 calls a second where
+ * /get_block allows 8. One call a second keeps up with four blocks a second.
+ *
+ * That path serialises every column as a string, None included: the rows are cleaned first.
+ */
+export async function getBlockHeaderRange(from: number, count: number): Promise<ExplorerBlock[]> {
+  const envelope = await rpcCall<{ ok?: boolean; result?: RawGetBlocksItem[]; error?: string }>('p2p_getBlocks', [Math.max(0, from), Math.max(1, Math.min(count, 512))])
+  if (!envelope || envelope.ok === false || !Array.isArray(envelope.result)) {
+    throw new NodeApiError(envelope?.error ?? 'p2p_getBlocks returned no blocks', null, 'p2p_getBlocks')
+  }
+  return envelope.result.map((item) => {
+    const block = normalizeBlock(cleanTransferRow(item.block), item.transactions ?? [], true)
+    rememberBlock(block)
+    return block
+  })
+}
+
+function cleanTransferRow(row: RawBlockRow): RawBlockRow {
+  const out = { ...row } as Record<string, unknown>
+  for (const [k, v] of Object.entries(out)) if (v === 'None' || v === 'null') out[k] = null
+  return out as unknown as RawBlockRow
+}
+
+/**
  * Whether reading [offset, offset+limit) with its EVM/exchange sections is cheap: /get_blocks
  * costs offset/100 + limit/50 of 1,000 an hour, so past height ~1,000 a block is read without
  * sections (the transaction index lists its transactions) rather than spend the budget.

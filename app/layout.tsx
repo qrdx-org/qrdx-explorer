@@ -47,6 +47,14 @@ export const metadata: Metadata = {
   },
 }
 
+/**
+ * Runs before any of the page's code: when a build file (/_next/static) fails to load, the
+ * page was served from a copy older than the last deploy, and without that file it can show
+ * neither styles nor scripts. Reload once (at most once a minute) to get the current page.
+ * Inline, because the files that would otherwise handle it are the ones missing.
+ */
+const ASSET_RECOVERY = `(function(){var K='qrdx-explorer:asset-reload';window.addEventListener('error',function(e){var t=e&&e.target;if(!t||t===window)return;var u=(t.src||t.href||'')+'';if(u.indexOf('/_next/static/')<0)return;try{var last=Number(sessionStorage.getItem(K)||0);if(Date.now()-last<60000)return;sessionStorage.setItem(K,String(Date.now()))}catch(_){return}location.reload()},true)})()`
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -54,6 +62,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: ASSET_RECOVERY }} />
+      </head>
       <body className={`${inter.className} ${inter.variable} ${mono.variable}`}>
         <StaleBuildGuard />
         <ThemeProvider

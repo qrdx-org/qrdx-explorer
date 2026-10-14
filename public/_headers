@@ -1,0 +1,5 @@
+# Workers static assets: build files are named by their content hash, so a name never
+# changes content. Cache them for a year; an old page's files then stay in the browser
+# after a deploy replaces them. (Pages are sent as max-age=0: worker.ts.)
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable

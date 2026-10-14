@@ -51,10 +51,15 @@ epoch) the chain makes four blocks a second. What changed in the explorer:
   gap between two blocks is (slot difference) × slot length, and a gap of more than one slot is a missed
   slot. The mean block time over any span needs two headers: (slot difference ÷ height difference).
 - **The stream drives the lists.** A `block` frame carries height, hash and node time: enough for a row.
-  Headers (proposer, slot, epoch, attestations) cost one `/get_block` each, which the node allows 8 times a
-  second per IP. `LiveChain` reads only the heights a view asks for, highest priority then newest first,
-  at most 5.5 a second, never while the tab is hidden; the client limiter spaces `/get_block` calls evenly
-  (6 a second) because the node counts fixed one-second windows. A live page reads about one header per block.
+  Headers (proposer, slot, epoch, attestations, sections) for the heights a view asks for are read in
+  ranges: `p2p_getBlocks(offset, limit)`, the JSON-RPC range peers sync with, returns up to 512 blocks with
+  their transactions and EVM/exchange sections, is not charged against the `/get_blocks` query budget, and
+  falls under JSON-RPC's 50 calls a second per client rather than `/get_block`'s 8. `LiveChain` sends one
+  call per window of up to 64 wanted heights, at most 3 a second, never while the tab is hidden: each call
+  carries the blocks since the last, so every block's header is read (about 3 calls a second of ~2 blocks).
+  That path serialises every column as a string, `None` included; `getBlockHeaderRange` cleans the rows. On
+  a node without the method it reads block by block with `/get_block`, which the client spaces evenly
+  (6 a second) because the node counts fixed one-second windows.
 - **Views re-render on a timer, not per block.** The store notifies at most every 120 ms; relative times
   share one ticker per interval.
 - **Transaction counts come from the index**, polled every two seconds for the whole page, not from block

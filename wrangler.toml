@@ -1,5 +1,6 @@
 name = "qrdx-explorer"
-main = ".open-next/worker.js"
+# OpenNext's worker with page Cache-Control fixed for Safari (worker.ts).
+main = "worker.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 # Keep function names out of the bundle. With them, esbuild wraps functions in __name(), and a

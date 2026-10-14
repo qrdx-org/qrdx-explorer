@@ -3,13 +3,19 @@
  *
  * The node's stream announces every block (height, hash, the node's time). That is all a
  * list of the latest blocks needs to keep up. Headers (proposer, slot, epoch,
- * attestations) cost a `/get_block` each, which the node allows 8 times a second per IP:
- * this store fetches them only for heights a view has asked for, newest first, at most
- * RATE a second, and not while the tab is hidden. Views subscribe and re-render at most
- * every NOTIFY_MS, never once per block.
+ * attestations) are read only for heights a view has asked for, highest priority and
+ * newest first, and not while the tab is hidden:
+ *
+ *  - in ranges: up to RANGE_MAX consecutive heights in one `p2p_getBlocks` JSON-RPC call
+ *    (getBlockHeaderRange), at most RANGE_RATE calls a second. One call covers every block
+ *    since the last, so the headers keep up with four blocks a second;
+ *  - else block by block (`/get_block`, which the node allows 8 times a second per IP), on
+ *    a node without that method.
+ *
+ * Views subscribe and re-render at most every NOTIFY_MS, never once per block.
  */
 
-import { getBlockHeader, type ExplorerBlock } from './api'
+import { getBlockHeader, getBlockHeaderRange, type ExplorerBlock } from './api'
 import type { BlockEvent, ReorgEvent } from './stream'
 
 export interface LiveBlock {
@@ -34,6 +40,10 @@ const MIN_RATE = 0.5
 const RECOVER_PER_SEC = 0.5
 const BURST = 4
 const CONCURRENCY = 4
+/** Heights per range call, and range calls a second at most (JSON-RPC allows 50 per client). */
+const RANGE_MAX = 64
+const RANGE_RATE = 3
+const RANGE_CONCURRENCY = 2
 const NOTIFY_MS = 120
 const RETRY_MS = 5000
 
@@ -50,6 +60,9 @@ export class LiveChain {
   private refilledAt = Date.now()
   private rate = RATE
   private backedOffAt = 0
+  /** Whether the node serves p2p_getBlocks: unknown until the first range call answers. */
+  private ranges: 'unknown' | 'on' | 'off' = 'unknown'
+  private rangesInflight = 0
   private epoch = 0
 
   /** Highest height announced or reported. */
@@ -175,20 +188,78 @@ export class LiveChain {
   private pump() {
     const now = Date.now()
     const elapsed = (now - this.refilledAt) / 1000
+    const max = this.ranges === 'off' ? RATE : RANGE_RATE
     // Climb back towards the full rate a second after the last refusal.
-    if (now - this.backedOffAt > 1000) this.rate = Math.min(RATE, this.rate + elapsed * RECOVER_PER_SEC)
+    if (now - this.backedOffAt > 1000) this.rate = Math.min(max, this.rate + elapsed * RECOVER_PER_SEC)
+    this.rate = Math.min(this.rate, max)
     this.tokens = Math.min(BURST, this.tokens + elapsed * this.rate)
     this.refilledAt = now
     if (typeof document !== 'undefined' && document.hidden) return
-    if (this.tokens < 1 || this.inflight.size >= CONCURRENCY) return
+    if (this.tokens < 1) return
     const due = [...this.wanted()]
       .filter(([h]) => h >= 0 && h <= this.head && !this.details.has(h) && !this.inflight.has(h) && now - (this.failedAt.get(h) ?? 0) > RETRY_MS)
       .sort((a, b) => b[1] - a[1] || b[0] - a[0])
+    if (this.ranges !== 'off') return this.pumpRanges(due)
+    if (this.inflight.size >= CONCURRENCY) return
     for (const [h] of due) {
       if (this.tokens < 1 || this.inflight.size >= CONCURRENCY) break
       this.tokens -= 1
       this.fetch(h)
     }
+  }
+
+  /**
+   * One call per window of up to RANGE_MAX heights: the most urgent wanted height and the
+   * wanted heights of the same priority below it within the window.
+   */
+  private pumpRanges(due: [number, number][]) {
+    let rest = due
+    while (rest.length && this.tokens >= 1 && this.rangesInflight < RANGE_CONCURRENCY) {
+      // Until the node has answered one range call, send one at a time.
+      if (this.ranges === 'unknown' && this.rangesInflight > 0) return
+      const [top, priority] = rest[0]
+      let bottom = top
+      for (const [h, p] of rest) if (p === priority && h <= top && h > top - RANGE_MAX) bottom = Math.min(bottom, h)
+      this.tokens -= 1
+      this.fetchRange(bottom, top)
+      rest = rest.filter(([h, p]) => p !== priority || h < bottom || h > top)
+    }
+  }
+
+  private fetchRange(bottom: number, top: number) {
+    const epoch = this.epoch
+    const heights = Array.from({ length: top - bottom + 1 }, (_, i) => bottom + i)
+    for (const h of heights) this.inflight.add(h)
+    this.rangesInflight++
+    getBlockHeaderRange(bottom, top - bottom + 1)
+      .then((blocks) => {
+        if (epoch !== this.epoch) return
+        this.ranges = 'on'
+        let added = false
+        for (const block of blocks) {
+          const announced = this.announced.get(block.height)
+          // Read after a reorg replaced the announced block: keep the announcement, read again.
+          if (announced?.hash && announced.hash !== block.hash) continue
+          this.failedAt.delete(block.height)
+          this.details.set(block.height, block)
+          added = true
+        }
+        if (added) this.changed()
+      })
+      .catch((err) => {
+        if (epoch !== this.epoch) return
+        // A node without p2p_getBlocks: read block by block from now on.
+        const code = (err as { code?: number })?.code
+        const unsupported = code === -32601 || /method not found/i.test(String((err as Error)?.message ?? err))
+        if (unsupported) this.ranges = 'off'
+        const at = Date.now()
+        for (const h of heights) this.failedAt.set(h, at)
+        if (!unsupported) this.backOff()
+      })
+      .finally(() => {
+        this.rangesInflight--
+        for (const h of heights) this.inflight.delete(h)
+      })
   }
 
   /** A read was refused (429) or failed: halve the rate, at most once a second. */
