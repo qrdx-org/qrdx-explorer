@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { ArrowLeftRight, ChevronDown, Crown, Gavel, Landmark, Scale, Settings2, ShieldCheck, Users, Vote } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowLeftRight, Check, ChevronDown, Crown, Gavel, Landmark, Link2, Scale, Settings2, ShieldCheck, Users, Vote } from 'lucide-react'
 import { useChain, useHead } from '@/components/explorer/ChainProvider'
 import { AddressLink, BlockLink } from '@/components/explorer/common'
 import { usePolled } from '@/components/explorer/hooks'
@@ -189,11 +189,11 @@ export default function GovernancePage() {
             <p className="px-4 py-10 text-center text-sm text-muted-foreground">No bridged assets on this network. The chain spec&apos;s BRIDGE_ASSETS lists none.</p>
           ) : (
             bridge.data.map((a) => (
-              <div key={a.address} className="flex items-center justify-between gap-3 border-b px-4 py-2.5 text-sm last:border-b-0">
+              <div key={a.token_address} className="flex items-center justify-between gap-3 border-b px-4 py-2.5 text-sm last:border-b-0">
                 <span>
                   <span className="font-medium">{a.symbol}</span>
                   <span className="block text-[11px] text-muted-foreground">
-                    from chain {a.chain_id} · {String(a.source_token).slice(0, 10)}… · {a.decimals} decimals
+                    from chain {a.chain} · {String(a.source_token).slice(0, 10)}… · {a.decimals} decimals
                   </span>
                 </span>
                 <span className="num text-right">
@@ -210,7 +210,20 @@ export default function GovernancePage() {
 }
 
 function ProposalRow({ proposal: x, head, inBlocks, display }: { proposal: Proposal; head: number; inBlocks: (blocks: number) => string; display: (address: string) => string }) {
-  const [open, setOpen] = useState(false)
+  // /governance#proposal-12 opens that proposal: proposals load in the browser, so the hash can be read up front.
+  const anchor = `proposal-${x.id}`
+  const [open, setOpen] = useState(() => typeof location !== 'undefined' && location.hash === `#${anchor}`)
+  const [copied, setCopied] = useState(false)
+  const row = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (location.hash === `#${anchor}`) row.current?.scrollIntoView({ block: 'start' })
+  }, [anchor])
+  const copyLink = () => {
+    void navigator.clipboard?.writeText(`${location.origin}${location.pathname}#${anchor}`)
+    history.replaceState(null, '', `#${anchor}`)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
   const total = Number(x.total_weight) || 0
   const yes = total ? (Number(x.yes) / total) * 100 : 0
   const no = total ? (Number(x.no) / total) * 100 : 0
@@ -218,7 +231,7 @@ function ProposalRow({ proposal: x, head, inBlocks, display }: { proposal: Propo
   const deadline =
     x.status === 'voting' ? { label: 'voting ends', at: x.voting_ends } : x.status === 'passed' && x.timelock_ends != null ? (head < x.timelock_ends ? { label: 'timelock ends', at: x.timelock_ends } : { label: 'execute by', at: x.execute_by ?? 0 }) : null
   return (
-    <div className="text-sm">
+    <div ref={row} id={anchor} className="scroll-mt-20 text-sm">
       <button onClick={() => setOpen((o) => !o)} className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-accent/40">
         <span className="num mt-0.5 w-10 shrink-0 text-muted-foreground">#{x.id}</span>
         <span className="min-w-0 flex-1">
@@ -250,7 +263,12 @@ function ProposalRow({ proposal: x, head, inBlocks, display }: { proposal: Propo
       {open && (
         <div className="grid gap-4 border-t bg-muted/20 px-4 py-3 md:grid-cols-2">
           <div>
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Proposal</p>
+            <p className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Proposal
+              <button type="button" onClick={copyLink} className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] normal-case tracking-normal hover:bg-accent">
+                {copied ? <Check className="h-3 w-3" /> : <Link2 className="h-3 w-3" />} {copied ? 'Link copied' : 'Copy link'}
+              </button>
+            </p>
             <Line k="Proposer">
               <AddressLink address={display(x.proposer)} />
             </Line>

@@ -214,16 +214,39 @@ export const getProposal = (id: number) => rpcCall<Proposal>('governance_getProp
 
 // ─── Bridge (docs/BRIDGE.md) ────────────────────────────────────────────────────
 
+/** bridge_getAssets: BridgeAsset.summary() in qrdx/exchange/bridge.py, with the token's supply here. */
 export interface BridgeAsset {
   symbol: string
-  address: string
-  chain_id: number
+  /** The source chain's EIP-155 id. */
+  chain: number
+  /** The token's address on the source chain, lower-case. */
   source_token: string
   decimals: number
+  /** The bridged token's address on QRDX. */
+  token_address: string
   supply: string
   mint_authority: string
-  [key: string]: unknown
+}
+
+/** A burn waiting for (or past) its release on the source chain (BRIDGE_WITHDRAW). */
+export interface BridgeWithdrawal {
+  id: number
+  chain: number
+  token: string
+  to: string
+  amount: string
+  from: string
+  height: number
+  tx_hash: string
+}
+
+/** A deposit by id ("chain:txhash:logindex"): minted, or the attestations gathered so far. */
+export interface BridgeDeposit {
+  id: string
+  minted: boolean
+  pending: { deposit: Record<string, unknown>; voters: Record<string, unknown> | string[]; since: number }[]
 }
 
 export const getBridgeAssets = () => rpcCall<BridgeAsset[]>('bridge_getAssets')
-export const getBridgeWithdrawals = (fromId = 1, limit = 100) => rpcCall<Array<Record<string, unknown>>>('bridge_getWithdrawals', [fromId, limit])
+export const getBridgeDeposit = (id: string) => rpcCall<BridgeDeposit>('bridge_getDeposit', [id])
+export const getBridgeWithdrawals = (fromId = 1, limit = 100) => rpcCall<BridgeWithdrawal[]>('bridge_getWithdrawals', [fromId, limit])

@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowDownLeft, ArrowUpRight, CheckCircle2, Loader2, Repeat, XCircle } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, CheckCircle2, Download, Loader2, Repeat, XCircle } from 'lucide-react'
 import { AddressLink, BlockLink, TimeAgo, TxLink } from './common'
 import { useTokenMap } from './data'
 import { Tabs } from './ui'
 import { assetSymbol, isOracleVote, type IndexedPage, type IndexedTx } from '@/lib/qrdx/indexed'
 import { cn } from '@/lib/utils'
+import { downloadText, toCsv } from '@/lib/csv'
 
 const OP_LABELS: Record<string, string> = {
   TOKEN_TRANSFER: 'Token transfer',
@@ -64,6 +65,7 @@ const KINDS = [
   { id: 'evm', label: 'EVM', kinds: 'evm' },
 ] as const
 type KindId = (typeof KINDS)[number]['id']
+const EXPORT_PAGES = 20
 
 /**
  * Transactions from the node's index (get_address_history / get_latest_transactions),
@@ -113,6 +115,50 @@ export function HistoryTable({
     void fetchPage(null)
   }, [fetchPage])
 
+  // The whole history as CSV, with the current filters: pages of 500, paced for the node's limit
+  // (8 history reads a second), up to EXPORT_PAGES of them.
+  const [exporting, setExporting] = useState<string | null>(null)
+  const exportCsv = async () => {
+    if (!address) return
+    const all: IndexedTx[] = []
+    let from: string | null = null
+    let more = false
+    try {
+      for (let i = 0; i < EXPORT_PAGES; i++) {
+        setExporting(`${all.length.toLocaleString()} rows…`)
+        await new Promise((r) => setTimeout(r, 150))
+        const page = await load({ limit: 500, cursor: from, kinds })
+        all.push(...page.transactions)
+        from = page.next_cursor
+        more = !!from && page.transactions.length === 500
+        if (!more) break
+      }
+      const rowsOut = all.filter((t) => votes || !isOracleVote(t))
+      downloadText(
+        `qrdx-${address.slice(0, 12)}-${kind}-${new Date().toISOString().slice(0, 10)}.csv`,
+        toCsv(rowsOut, [
+          { header: 'time_utc', value: (t) => (t.timestamp ? new Date(t.timestamp * 1000).toISOString() : '') },
+          { header: 'block', value: (t) => t.block_height },
+          { header: 'tx_hash', value: (t) => t.tx_hash },
+          { header: 'kind', value: (t) => t.kind },
+          { header: 'type', value: (t) => opLabel(t) },
+          { header: 'role', value: (t) => (t.roles ?? []).join(' ') },
+          { header: 'status', value: (t) => t.status },
+          { header: 'from', value: (t) => t.sender },
+          { header: 'to', value: (t) => t.target },
+          { header: 'asset', value: (t) => (t.asset ? assetSymbol(t.asset, tokens) : '') },
+          { header: 'asset_address', value: (t) => t.asset },
+          { header: 'amount', value: (t) => t.amount },
+          { header: 'fee_qrdx', value: (t) => t.fee },
+          { header: 'error', value: (t) => t.error },
+        ])
+      )
+      setExporting(more ? `Exported the newest ${all.length.toLocaleString()}; older rows were left out.` : null)
+    } catch (e) {
+      setExporting(e instanceof Error ? e.message : 'Export failed')
+    }
+  }
+
   const shown = (rows ?? []).filter((t) => votes || !isOracleVote(t))
   const hidden = (rows ?? []).length - shown.length
 
@@ -124,6 +170,19 @@ export function HistoryTable({
           <input type="checkbox" checked={votes} onChange={(e) => setVotes(e.target.checked)} className="accent-[hsl(var(--primary))]" />
           Validator votes{!votes && hidden > 0 ? ` (${hidden} hidden)` : ''}
         </label>
+        {address && (
+          <button
+            type="button"
+            onClick={() => void exportCsv()}
+            disabled={!!exporting && exporting.endsWith('…')}
+            className="mr-2 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs hover:bg-accent disabled:opacity-60"
+            title="Download this address's transactions as CSV, with the filters above"
+          >
+            {exporting?.endsWith('…') ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            {exporting?.endsWith('…') ? exporting : 'CSV'}
+          </button>
+        )}
+        {exporting && !exporting.endsWith('…') && <span className="w-full px-2 text-right text-[11px] text-muted-foreground">{exporting}</span>}
       </div>
       <div className="overflow-x-auto border-t">
         <table className="num w-full text-sm">

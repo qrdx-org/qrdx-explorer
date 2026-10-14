@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Activity, Blocks, Coins, Gavel, Menu, Search, Server, ShieldCheck, Timer, X } from 'lucide-react'
+import { Activity, ArrowLeftRight, Blocks, Coins, Gavel, Menu, Search, Server, ShieldCheck, Timer, X } from 'lucide-react'
 import { Wordmark } from './chrome/Logo'
 import { SearchDialog, openSearch } from './chrome/SearchDialog'
 import { ThemeToggle } from './theme-toggle'
@@ -18,6 +18,7 @@ const NAV_LINKS = [
   { href: '/validators', label: 'Validators', icon: ShieldCheck, match: ['/validators'] },
   { href: '/consensus', label: 'Consensus', icon: Timer, match: ['/consensus'] },
   { href: '/governance', label: 'Governance', icon: Gavel, match: ['/governance'] },
+  { href: '/bridge', label: 'Bridge', icon: ArrowLeftRight, match: ['/bridge'] },
   { href: '/network', label: 'Network', icon: Server, match: ['/network'] },
 ]
 
