@@ -28,6 +28,8 @@ import { ClaimedPill, ProfileAvatar, ProfileLinks, TokenAvatar } from '@/compone
 import { ProfileButton } from '@/components/profile/ProfileButton'
 import { useProfile } from '@/lib/profiles/client'
 import { cn } from '@/lib/utils'
+import { AccountNfts } from '@/components/nft/AccountNfts'
+import { ContractPanel } from '@/components/contract/ContractPanel'
 
 const FORMAT: Record<string, string> = { pq: 'Post-quantum (ML-DSA-65)', evm: 'EVM account', legacy: 'Legacy UTXO' }
 
@@ -45,7 +47,7 @@ async function mapLimit<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): 
   return out
 }
 
-type Tab = 'history' | 'tokens' | 'trading' | 'validator'
+type Tab = 'history' | 'tokens' | 'nfts' | 'trading' | 'validator' | 'contract'
 
 export function AccountView({ address }: { address: string }) {
   const known = getKnownAddress(address)
@@ -59,6 +61,7 @@ export function AccountView({ address }: { address: string }) {
   const [orders, setOrders] = useState<SpotOrder[]>([])
   const [lp, setLp] = useState<LpPosition[]>([])
   const [tab, setTab] = useState<Tab>('history')
+  const [nftCount, setNftCount] = useState<number | null>(null)
 
   useEffect(() => {
     getAddress(address).then(setSummary, (e) => setError(e instanceof Error ? e.message : 'Could not load the address'))
@@ -268,7 +271,9 @@ export function AccountView({ address }: { address: string }) {
           className="px-2"
           tabs={[
             { id: 'history' as Tab, label: 'Transactions' },
+            ...(summary?.isContract ? [{ id: 'contract' as Tab, label: 'Contract' }] : []),
             { id: 'tokens' as Tab, label: `Tokens (${balances?.length ?? '…'})` },
+            { id: 'nfts' as Tab, label: `NFTs${nftCount != null ? ` (${nftCount})` : ''}` },
             { id: 'trading' as Tab, label: `Trading (${orders.length + lp.length + positions.length})` },
             ...(validator ? [{ id: 'validator' as Tab, label: 'Validator' }] : []),
           ]}
@@ -276,6 +281,8 @@ export function AccountView({ address }: { address: string }) {
           onChange={setTab}
         />
         {tab === 'history' && <HistoryTable load={load} address={address} />}
+        {tab === 'contract' && <ContractPanel address={address} />}
+        {tab === 'nfts' && <AccountNfts address={address} onCount={setNftCount} />}
         {tab === 'tokens' && (
           <div className="overflow-x-auto">
             <table className="num w-full text-sm">

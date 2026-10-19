@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Activity, ArrowLeftRight, Blocks, Coins, Gavel, Menu, Search, Server, ShieldCheck, Timer, X } from 'lucide-react'
+import { Activity, ArrowLeftRight, Blocks, Coins, Gavel, Image as ImageIcon, Menu, Search, Server, ShieldCheck, Timer, X } from 'lucide-react'
 import { Wordmark } from './chrome/Logo'
 import { SearchDialog, openSearch } from './chrome/SearchDialog'
 import { ThemeToggle } from './theme-toggle'
@@ -15,6 +15,7 @@ const NAV_LINKS = [
   { href: '/blocks', label: 'Blocks', icon: Blocks, match: ['/blocks', '/block/'] },
   { href: '/transactions', label: 'Transactions', icon: Activity, match: ['/transactions', '/tx/'] },
   { href: '/tokens', label: 'Tokens', icon: Coins, match: ['/tokens'] },
+  { href: '/nfts', label: 'NFTs', icon: ImageIcon, match: ['/nfts'] },
   { href: '/validators', label: 'Validators', icon: ShieldCheck, match: ['/validators'] },
   { href: '/consensus', label: 'Consensus', icon: Timer, match: ['/consensus'] },
   { href: '/governance', label: 'Governance', icon: Gavel, match: ['/governance'] },
