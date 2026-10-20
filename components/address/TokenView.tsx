@@ -143,7 +143,7 @@ export function TokenView({ token }: { token: NativeToken }) {
           right={main && main.change !== null ? <span className={cn('num text-sm font-medium', toneOf(main.change))}>{fmtPct(main.change)}</span> : null}
         >
           {main ? (
-            <PriceChart market={main.t.market} invert={!main.isBase} label={`${token.symbol} in ${sym(main.other)}`} />
+            <PriceChart market={main.t.market} invert={!main.isBase} label={`${token.symbol} in ${sym(main.other)}`} usd={{ base: token.token_address, quote: main.other, quoteSymbol: sym(main.other) }} />
           ) : (
             <p className="py-16 text-center text-sm text-muted-foreground">{markets === null ? 'Loading markets…' : `${token.symbol} has no market yet.`}</p>
           )}

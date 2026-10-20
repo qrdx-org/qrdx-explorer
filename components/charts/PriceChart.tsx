@@ -5,6 +5,7 @@ import { useTheme } from 'next-themes'
 import { AreaSeries, CandlestickSeries, ColorType, CrosshairMode, HistogramSeries, LineStyle, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts'
 import { CandlestickChart, LineChart } from 'lucide-react'
 import { getCandles, type MarketCandle } from '@/lib/qrdx/indexed'
+import { getActiveNetwork } from '@/lib/qrdx/client'
 import { inv, n18 } from '@/lib/math/decimal'
 import { cn } from '@/lib/utils'
 
@@ -66,7 +67,34 @@ function decimals(x: number): number {
  * time, book fills and pool swaps alike. `invert` shows the pair the other way
  * round (e.g. a token priced in QRDX when the node quotes QRDX per token).
  */
-export function PriceChart({ market, invert = false, label, height = 320 }: { market: string; invert?: boolean; label: string; height?: number }) {
+/** The trade API's candles in dollars (`?unit=usd`, qrdx-trade spotCandlesUsd), as chart rows. */
+async function usdCandles(base: string, quote: string, interval: string): Promise<{ rows: Row[]; label: string } | null> {
+  const api = getActiveNetwork().tradeApiUrl
+  if (!api) return null
+  const seg = (a: string) => (a.toUpperCase() === 'QRDX' ? 'qrdx' : a.toLowerCase())
+  const res = await fetch(`${api}/markets/${seg(base)}/${seg(quote)}/candles?interval=${interval}&limit=300&unit=usd`, { cache: 'no-store' })
+  if (!res.ok) return null
+  const body = (await res.json()) as { kind: string; label: string; candles: { t: number; o: string; h: string; l: string; c: string; v: string }[] }
+  if (body.kind === 'none') return null
+  return { label: body.label, rows: body.candles.map((c) => ({ t: c.t, o: +c.o, h: +c.h, l: +c.l, c: +c.c, v: +c.v })) }
+}
+
+export function PriceChart({
+  market,
+  invert = false,
+  label,
+  height = 320,
+  usd,
+}: {
+  market: string
+  invert?: boolean
+  label: string
+  height?: number
+  /** The pair as a base and quote asset (token address or QRDX): offers the chart in dollars, from the trade API. */
+  usd?: { base: string; quote: string; quoteSymbol: string }
+}) {
+  const [unit, setUnit] = useState<'quote' | 'usd'>('quote')
+  const [usdLabel, setUsdLabel] = useState<string | null>(null)
   const [interval, setInterval_] = useState<(typeof INTERVALS)[number]>('1h')
   const [kind, setKind] = useState<'candles' | 'line'>('candles')
   const [rows, setRows] = useState<Row[] | null>(null)
@@ -80,17 +108,23 @@ export function PriceChart({ market, invert = false, label, height = 320 }: { ma
   useEffect(() => {
     let live = true
     setRows(null)
-    getCandles(market, interval, 500)
-      .then((r) => live && setRows(orient(r, invert, SECONDS[interval])))
-      .catch(() => live && setRows([]))
+    const load = () =>
+      unit === 'usd' && usd
+        ? usdCandles(usd.base, usd.quote, interval).then((r) => {
+            if (!live) return
+            setUsdLabel(r?.label ?? null)
+            setRows(r?.rows ?? [])
+          })
+        : getCandles(market, interval, 500).then((r) => live && setRows(orient(r, invert, SECONDS[interval])))
+    load().catch(() => live && setRows([]))
     const t = setInterval(() => {
-      getCandles(market, interval, 500).then((r) => live && setRows(orient(r, invert, SECONDS[interval]))).catch(() => undefined)
+      load().catch(() => undefined)
     }, 30_000)
     return () => {
       live = false
       clearInterval(t)
     }
-  }, [market, interval, invert])
+  }, [market, interval, invert, unit, usd?.base, usd?.quote]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!box.current) return
@@ -160,7 +194,21 @@ export function PriceChart({ market, invert = false, label, height = 320 }: { ma
         <button aria-label="Line" onClick={() => setKind('line')} className={cn('rounded-md p-1.5', kind === 'line' ? 'bg-accent' : 'text-muted-foreground')}>
           <LineChart className="h-3.5 w-3.5" />
         </button>
-        <span className="ml-auto text-[11px] text-muted-foreground">{label} · node trades</span>
+        {usd && usd.quoteSymbol.toUpperCase() !== 'USD' && (
+          <div className="ml-1.5 flex rounded-md bg-muted p-0.5 text-[11px]" role="group" aria-label="Price in">
+            {(
+              [
+                ['quote', usd.quoteSymbol],
+                ['usd', 'USD'],
+              ] as const
+            ).map(([u, text]) => (
+              <button key={u} onClick={() => setUnit(u)} aria-pressed={unit === u} className={cn('rounded px-1.5 py-0.5 font-medium', unit === u ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground')}>
+                {text}
+              </button>
+            ))}
+          </div>
+        )}
+        <span className="ml-auto truncate text-[11px] text-muted-foreground">{unit === 'usd' && usd ? (usdLabel ?? 'No USD price for this pair') : `${label} · node trades`}</span>
       </div>
       <div className="relative" style={{ height }}>
         <div ref={box} className="absolute inset-0" />
