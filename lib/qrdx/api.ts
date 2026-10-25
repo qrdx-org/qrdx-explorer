@@ -32,6 +32,7 @@ import {
   rpcCallOptional,
 } from './client'
 import { ensure0x, formatUnits, isHex, strip0x } from './encoding'
+import { isQnsName, resolveName } from './qns'
 import { decodeEvmTransaction, type DecodedEvmTx } from './evm'
 import {
   EVM_DECIMALS,
@@ -202,6 +203,35 @@ export const EXCHANGE_OP_NAMES: Record<number, string> = {
   53: 'Delegate Stake',
   54: 'Undelegate Stake',
   55: 'Set Commission',
+  // Trading features, acting for accounts, QNS, deployer markets (qrdx-node, 2026-10).
+  56: 'Stop / Take Profit',
+  57: 'Cancel All',
+  58: 'Modify Perp Order',
+  59: 'Modify Order',
+  60: 'Batch',
+  61: 'TWAP Order',
+  62: 'Cancel TWAP',
+  63: 'Approve Agent',
+  64: 'Revoke Agent',
+  65: 'Create Sub-account',
+  66: 'Sub-account Transfer',
+  67: 'Create Vault',
+  68: 'Register Referral Code',
+  69: 'Join Referral',
+  70: 'Account Policy',
+  71: 'Register Name',
+  72: 'Renew Name',
+  73: 'Set Name Record',
+  74: 'Set Primary Name',
+  75: 'Back Recovery',
+  76: 'Isolated Margin',
+  77: 'Schedule Cancel',
+  78: 'Approve Builder Fee',
+  79: 'Deployer Bond',
+  80: 'Deployer Unbond',
+  81: 'Deployer Oracle Price',
+  82: 'Halt Market',
+  83: 'Claim Ticker',
 }
 
 // ─── Caches & query-cost budget ─────────────────────────────────────────────────
@@ -1275,6 +1305,11 @@ export async function resolveSearch(query: string): Promise<SearchTarget> {
   if (!q) return { type: 'none' }
   if (/^\d+$/.test(q)) return { type: 'block', path: `/block/${q}` }
   if (detectAddressFormat(q)) return { type: 'address', path: `/address/${q}` }
+  // A QNS name (label.qrdx) goes to the address it points to now.
+  if (isQnsName(q)) {
+    const target = await resolveName(q)
+    return target ? { type: 'address', path: `/address/${target}` } : { type: 'none' }
+  }
   if (isHex(q, 32)) {
     const block = await getBlock(q).catch(() => null)
     if (block) return { type: 'block', path: `/block/${block.height}` }

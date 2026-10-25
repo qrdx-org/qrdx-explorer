@@ -70,7 +70,8 @@ export function SearchDialog() {
     setMsg(null)
     try {
       const target = await resolveSearch(q)
-      if (target.type === 'none') setMsg('Enter a block number, a 64-character hash, an address (0x…, 0xPQ…), or a token name.')
+      if (target.type === 'none')
+        setMsg(/\.qrdx$/i.test(q.trim()) ? `${q.trim().toLowerCase()} is not registered, or points nowhere.` : 'Enter a block number, a 64-character hash, an address (0x…, 0xPQ…), a name.qrdx, or a token name.')
       else go(target.path)
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Search failed')
@@ -99,7 +100,7 @@ export function SearchDialog() {
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Block, transaction, address or token"
+            placeholder="Block, transaction, address, name.qrdx or token"
             className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           {busy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}

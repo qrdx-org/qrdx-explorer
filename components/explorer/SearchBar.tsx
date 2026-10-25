@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { resolveSearch } from '@/lib/qrdx'
 
 export default function SearchBar({
-  placeholder = 'Search by address / tx hash / block number / block hash',
+  placeholder = 'Search by address / name.qrdx / tx hash / block number / block hash',
   size = 'lg',
 }: {
   placeholder?: string

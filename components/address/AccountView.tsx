@@ -29,7 +29,10 @@ import { ProfileButton } from '@/components/profile/ProfileButton'
 import { useProfile } from '@/lib/profiles/client'
 import { cn } from '@/lib/utils'
 import { AccountNfts } from '@/components/nft/AccountNfts'
+import { getAuthority, namesOf, primaryName, type Authority } from '@/lib/qrdx/qns'
 import { ContractPanel } from '@/components/contract/ContractPanel'
+
+const short = (a: string) => `${a.slice(0, 8)}…${a.slice(-6)}`
 
 const FORMAT: Record<string, string> = { pq: 'Post-quantum (ML-DSA-65)', evm: 'EVM account', legacy: 'Legacy UTXO' }
 
@@ -62,6 +65,10 @@ export function AccountView({ address }: { address: string }) {
   const [lp, setLp] = useState<LpPosition[]>([])
   const [tab, setTab] = useState<Tab>('history')
   const [nftCount, setNftCount] = useState<number | null>(null)
+  // QNS and account control: null on a node that predates them.
+  const [primary, setPrimary] = useState<string | null>(null)
+  const [names, setNames] = useState<string[] | null>(null)
+  const [authority, setAuthority] = useState<Authority | null>(null)
 
   useEffect(() => {
     getAddress(address).then(setSummary, (e) => setError(e instanceof Error ? e.message : 'Could not load the address'))
@@ -72,6 +79,9 @@ export function AccountView({ address }: { address: string }) {
     getPerpAccount(address).then(setPerp)
     getSpotOrders(address).then(setOrders)
     getLpPositions(address).then(setLp)
+    primaryName(address).then(setPrimary)
+    namesOf(address).then(setNames)
+    getAuthority(address).then(setAuthority)
   }, [address])
 
   useEffect(() => {
@@ -141,6 +151,11 @@ export function AccountView({ address }: { address: string }) {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
               {claimed && <ClaimedPill kind="account" />}
+              {primary && (
+                <span title="Its primary QNS name: set by the account, and shown only while the name points back here">
+                  <Pill tone="primary">{primary}</Pill>
+                </span>
+              )}
               {summary?.format && <Pill>{FORMAT[summary.format]}</Pill>}
               {validator && <Pill tone={validator.status === 'active' ? 'bid' : 'warn'}>{validator.status} validator</Pill>}
               {summary?.isContract && <Pill tone="primary">Contract</Pill>}
@@ -210,6 +225,37 @@ export function AccountView({ address }: { address: string }) {
           <Row k="Open orders">{orders.length}</Row>
           <Row k="Liquidity positions">{lp.length}</Row>
           <Row k="Perps positions">{positions.length}</Row>
+          {names && names.length > 0 && (
+            <Row k="QNS names">
+              <span className="break-all">{names.join(', ')}</span>
+            </Row>
+          )}
+          {authority && (authority.controllers.length > 0 || !authority.own_key || authority.agents.length > 0 || authority.subaccount_of || authority.multisig) && (
+            <>
+              {authority.multisig && <Row k="Multisig">{authority.multisig.threshold} of {authority.multisig.members.length}</Row>}
+              {authority.subaccount_of && (
+                <Row k="Sub-account of">
+                  <Link href={`/address/${authority.subaccount_of}`} className="font-mono text-primary hover:underline">{short(authority.subaccount_of)}</Link>
+                </Row>
+              )}
+              {authority.controllers.length > 0 && (
+                <Row k="Controllers">
+                  <span className="flex flex-col items-end gap-0.5">
+                    {authority.controllers.map((c) => (
+                      <Link key={c.address} href={`/address/${c.address}`} className="font-mono text-primary hover:underline">
+                        {short(c.address)}
+                        {c.members ? ` (${c.members.threshold} of ${c.members.members.length})` : ''}
+                      </Link>
+                    ))}
+                  </span>
+                </Row>
+              )}
+              {!authority.own_key && <Row k="Own key">Off: only its controllers sign</Row>}
+              {authority.delay > 0 && <Row k="Change delay">{Math.round(authority.delay / 3600)} h</Row>}
+              {authority.agents.length > 0 && <Row k="Trading agents">{authority.agents.length}</Row>}
+              {authority.pending_changes.length > 0 && <Row k="Waiting changes">{authority.pending_changes.length}</Row>}
+            </>
+          )}
           {/^0xPQ/.test(address) && tradeLink(`/portfolio?address=${address}`) && (
             <Row k="Portfolio and PnL">
               <a href={tradeLink(`/portfolio?address=${address}`)!} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
