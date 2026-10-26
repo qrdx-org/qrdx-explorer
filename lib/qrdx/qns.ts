@@ -19,14 +19,19 @@ export const primaryName = (address: string) => rpcCallOptional<string | null>('
 /** The names an address holds (their NFTs). */
 export const namesOf = (address: string) => rpcCallOptional<string[]>('qns_namesOf', [address])
 
+/** qns_getName (qrdx-node qrdx/exchange/qns.py `summary`). */
 export interface QnsName {
   name: string
   owner: string
   token_id: string
   expires: string
-  grace_ends?: string
-  records: Record<string, string>
-  [k: string]: unknown
+  expired: boolean
+  available_from: string
+  /** Its address record, or null. */
+  address: string | null
+  /** What it resolves to now (null once expired). */
+  resolves_to: string | null
+  texts: Record<string, string>
 }
 
 export const getName = (name: string) => rpcCallOptional<QnsName | null>('qns_getName', [name.trim().toLowerCase()])
