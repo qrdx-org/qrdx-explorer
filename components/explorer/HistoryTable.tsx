@@ -70,11 +70,10 @@ const OP_LABELS: Record<string, string> = {
   PERP_ISOLATED_MARGIN: 'Isolated margin',
   SCHEDULE_CANCEL: 'Schedule cancel',
   APPROVE_BUILDER_FEE: 'Approve builder fee',
-  DEPLOYER_BOND: 'Deployer bond',
-  DEPLOYER_UNBOND: 'Deployer unbond',
-  DEPLOYER_SET_ORACLE: 'Deployer oracle',
-  DEPLOYER_HALT: 'Halt market',
   TICKER_CLAIM: 'Claim ticker',
+  BRIDGE_PROVE_DEPOSIT: 'Prove bridge deposit',
+  MIGRATION_CLAIM: 'Migration claim',
+  DOOMSDAY_PROVE: 'Doomsday proof',
 }
 
 export function opLabel(t: Pick<IndexedTx, 'kind' | 'op'>): string {

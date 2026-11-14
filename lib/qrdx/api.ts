@@ -34,6 +34,7 @@ import {
 import { ensure0x, formatUnits, isHex, strip0x } from './encoding'
 import { isQnsName, resolveName } from './qns'
 import { decodeEvmTransaction, type DecodedEvmTx } from './evm'
+import { decodeExchangeTx } from './exchange-wire'
 import {
   EVM_DECIMALS,
   NATIVE_DECIMALS,
@@ -62,7 +63,8 @@ export interface RawBlockRow {
   content: string | null
   created_at: string | null
   evm_transactions?: string[]
-  exchange_transactions?: RawExchangeTx[]
+  /** JSON objects before node 3.0.0; base64 binary since (feature binary_exchange_txs, exchange-wire.ts). */
+  exchange_transactions?: (RawExchangeTx | string)[]
 }
 
 export interface RawExchangeTx {
@@ -158,7 +160,6 @@ export const EXCHANGE_OP_NAMES: Record<number, string> = {
   8: 'Close Position',
   9: 'Partial Close',
   10: 'Add Margin',
-  11: 'Update Oracle',
   12: 'Create Market',
   13: 'Token Deploy',
   14: 'Token Transfer',
@@ -203,7 +204,8 @@ export const EXCHANGE_OP_NAMES: Record<number, string> = {
   53: 'Delegate Stake',
   54: 'Undelegate Stake',
   55: 'Set Commission',
-  // Trading features, acting for accounts, QNS, deployer markets (qrdx-node, 2026-10).
+  // Trading features, acting for accounts, QNS (qrdx-node, 2026-10). 11 and 79–82 (operator and
+  // deployer oracles) were retired by node 3.0.0 and no longer decode.
   56: 'Stop / Take Profit',
   57: 'Cancel All',
   58: 'Modify Perp Order',
@@ -227,11 +229,10 @@ export const EXCHANGE_OP_NAMES: Record<number, string> = {
   76: 'Isolated Margin',
   77: 'Schedule Cancel',
   78: 'Approve Builder Fee',
-  79: 'Deployer Bond',
-  80: 'Deployer Unbond',
-  81: 'Deployer Oracle Price',
-  82: 'Halt Market',
   83: 'Claim Ticker',
+  84: 'Prove Bridge Deposit',
+  85: 'Migration Claim',
+  86: 'Doomsday Proof',
 }
 
 // ─── Caches & query-cost budget ─────────────────────────────────────────────────
@@ -447,7 +448,14 @@ function normalizeBlock(row: RawBlockRow, nativePayloads: string[] | null, secti
   evmSection.forEach((raw, i) => transactions.push(normalizeEvmTx(raw, i, ref)))
 
   const exchangeSection = row.exchange_transactions ?? []
-  exchangeSection.forEach((raw, i) => transactions.push(normalizeExchangeTx(raw, i, ref)))
+  exchangeSection.forEach((raw, i) => {
+    if (typeof raw !== 'string') return void transactions.push(normalizeExchangeTx(raw, i, ref))
+    try {
+      transactions.push(normalizeExchangeTx(decodeExchangeTx(raw), i, ref))
+    } catch {
+      // A form this build cannot read: the block still shows; the index names the transaction.
+    }
+  })
 
   let nativeCount = 0
   for (const payload of nativePayloads ?? []) {

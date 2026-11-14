@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowUpRight, BarChart3, Coins, Droplets, ExternalLink, Info, ListOrdered } from 'lucide-react'
+import { ArrowUpRight, BarChart3, Coins, Droplets, ExternalLink, Info, ListOrdered, ShieldAlert } from 'lucide-react'
 import { PriceChart } from '@/components/charts/PriceChart'
 import { AddressLink, BlockLink, CopyButton, TimeAgo, TxLink } from '@/components/explorer/common'
 import { useTokenMap, useUsdPrices, usdOf } from '@/components/explorer/data'
@@ -21,7 +21,7 @@ import {
 } from '@/lib/qrdx/indexed'
 import { inv, n18 } from '@/lib/math/decimal'
 import { cn } from '@/lib/utils'
-import { ClaimedPill, ProfileLinks, TokenImage } from '@/components/profile/ProfileBits'
+import { ClaimedPill, ImpersonationPill, ProfileLinks, TokenImage, VerifiedMark } from '@/components/profile/ProfileBits'
 import { ProfileButton } from '@/components/profile/ProfileButton'
 import { useProfile } from '@/lib/profiles/client'
 
@@ -80,11 +80,13 @@ export function TokenView({ token }: { token: NativeToken }) {
     <div className="space-y-6">
       <section className="hero-glow -mx-4 border-b px-4 pb-6 pt-2">
         <div className="flex flex-wrap items-center gap-4">
-          <TokenImage symbol={token.symbol} profile={profile} size={56} />
+          <TokenImage symbol={token.symbol} profile={profile} address={addr} size={56} />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{token.name}</h1>
               <span className="text-lg text-muted-foreground">{token.symbol}</span>
+              <VerifiedMark address={addr} label />
+              <ImpersonationPill token={token} />
               <Pill tone="primary">
                 <Coins className="h-3 w-3" /> Native token
               </Pill>
@@ -151,9 +153,10 @@ export function TokenView({ token }: { token: NativeToken }) {
 
         <Panel title="Token" icon={<Info className="h-4 w-4" />}>
           <Row k="Symbol">{token.symbol}</Row>
+          {token.ticker && <Row k="Claimed ticker">{token.ticker}</Row>}
           <Row k="Decimals">{token.decimals}</Row>
           <Row k="Total supply">{fmtNum(token.total_supply, 6)}</Row>
-          <Row k="Max supply">{token.max_supply ? fmtNum(token.max_supply, 6) : 'None'}</Row>
+          <Row k="Max supply">{token.max_supply ? fmtNum(token.max_supply, 6) : token.mint_authority ? 'Uncapped' : 'Fixed at total supply'}</Row>
           <Row k="Mint authority">{token.mint_authority ? <AddressLink address={token.mint_authority} /> : 'Renounced'}</Row>
           <Row k="Freeze authority">{token.freeze_authority ? <AddressLink address={token.freeze_authority} /> : 'None'}</Row>
           <Row k="Creator">
@@ -166,6 +169,25 @@ export function TokenView({ token }: { token: NativeToken }) {
           <Row k="Extensions">{ext.length ? ext.join(', ') : 'None'}</Row>
         </Panel>
       </div>
+
+      {token.issuer_powers && (
+        <Panel title="Issuer powers" icon={<ShieldAlert className="h-4 w-4" />} right={<span className="text-xs text-muted-foreground">What the issuer can still do to holders</span>}>
+          {token.issuer_powers.length === 0 ? (
+            <p className="p-6 text-center text-sm text-muted-foreground">None. Nobody can mint, freeze or move {token.symbol} on a holder&apos;s behalf.</p>
+          ) : (
+            token.issuer_powers.map((p) => (
+              <Row key={p.power} k={(p.power.charAt(0).toUpperCase() + p.power.slice(1)).replace(/_/g, ' ')} wrap>
+                <span className="block text-sm">{p.what.charAt(0).toUpperCase() + p.what.slice(1)}</span>
+                <span className="mt-0.5 flex flex-wrap justify-end gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                  {(Array.isArray(p.by) ? p.by : [p.by]).map((a) => (
+                    <AddressLink key={a} address={a} />
+                  ))}
+                </span>
+              </Row>
+            ))
+          )}
+        </Panel>
+      )}
 
       <Panel title="Markets" icon={<ListOrdered className="h-4 w-4" />} right={<span className="text-xs text-muted-foreground">Prices are of 1 {token.symbol}</span>}>
         <div className="overflow-x-auto">
@@ -189,7 +211,7 @@ export function TokenView({ token }: { token: NativeToken }) {
                   <tr key={v.t.market} className="border-b last:border-b-0 hover:bg-accent/40">
                     <td className="px-4 py-2.5">
                       <span className="flex items-center gap-2 font-medium">
-                        <TokenImage symbol={token.symbol} profile={profile} size={20} />
+                        <TokenImage symbol={token.symbol} profile={profile} address={addr} size={20} />
                         {token.symbol}/
                         {isNativeAsset(v.other) ? (
                           'QRDX'

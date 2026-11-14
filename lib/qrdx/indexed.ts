@@ -105,6 +105,16 @@ export interface NativeToken {
   created_height: number
   extensions?: Record<string, unknown>
   frozen_accounts?: number
+  /** The ticker this token holds through a TICKER_CLAIM, if any (node 3.0.0+). */
+  ticker?: string | null
+  /** What its issuer can still do to holders, as the node states it (node 3.0.0+). */
+  issuer_powers?: IssuerPower[]
+}
+
+export interface IssuerPower {
+  power: string
+  by: string | string[]
+  what: string
 }
 
 export function getTokens(): Promise<NativeToken[]> {

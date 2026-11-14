@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Github, Globe, MessageCircle, PenLine, Send, Twitter } from 'lucide-react'
+import { BadgeCheck, Github, Globe, MessageCircle, PenLine, Send, TriangleAlert, Twitter } from 'lucide-react'
 import AddressAvatar from '@/components/AddressAvatar'
 import { TokenMark } from '@/components/explorer/ui'
 import { profileImage, useProfile } from '@/lib/profiles/client'
 import { socialLinks, type ProfileFields, type PublicProfile } from '@/lib/profiles/claim'
+import { impersonates, QRDX_LOGO, verifiedToken } from '@/lib/verified-tokens'
 import { cn } from '@/lib/utils'
 
 /** An account's image when its owner published one, else its identicon. */
@@ -43,9 +44,26 @@ export function ProfileAvatar({
   return <AddressAvatar address={address} size={size} imageUrl={fallbackImage} className={className} />
 }
 
-/** A token's image when its creator published one, else its lettered mark. */
-export function TokenImage({ symbol, profile, size = 36, className }: { symbol: string; profile: PublicProfile | null | undefined; size?: number; className?: string }) {
-  const src = profileImage(profile)
+/**
+ * A token's image: its logo when QRDX verified it (or it is native QRDX), else the image
+ * its creator published, else its lettered mark. Pass `address` for the verified lookup.
+ */
+export function TokenImage({
+  symbol,
+  profile,
+  address,
+  size = 36,
+  className,
+}: {
+  symbol: string
+  profile: PublicProfile | null | undefined
+  /** The token's address, or "QRDX" for the native coin; omitted, only the creator's image is used. */
+  address?: string | null
+  size?: number
+  className?: string
+}) {
+  const logo = address === 'QRDX' ? QRDX_LOGO : (verifiedToken(address)?.logo ?? null)
+  const src = logo ?? profileImage(profile)
   const [broken, setBroken] = useState<string | null>(null)
   if (src && broken !== src) {
     return (
@@ -61,6 +79,43 @@ export function TokenImage({ symbol, profile, size = 36, className }: { symbol: 
     )
   }
   return <TokenMark symbol={symbol} size={size} className={className} />
+}
+
+/** The mark of a token QRDX verified; nothing for any other address. `label` adds the word. */
+export function VerifiedMark({ address, label = false, className }: { address: string | null | undefined; label?: boolean; className?: string }) {
+  const v = verifiedToken(address)
+  if (!v) return null
+  if (!label) {
+    return (
+      <span title={`Verified by QRDX. ${v.note}`} className={cn('inline-flex shrink-0 align-middle text-primary', className)}>
+        <BadgeCheck className="h-3.5 w-3.5" aria-label="Verified token" />
+      </span>
+    )
+  }
+  return (
+    <span
+      title={v.note}
+      className={cn('inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary', className)}
+    >
+      <BadgeCheck className="h-3 w-3" />
+      Verified
+    </span>
+  )
+}
+
+/** Warns that a token uses a verified token's symbol or name without being it. */
+export function ImpersonationPill({ token, className }: { token: { token_address: string; symbol: string; name: string }; className?: string }) {
+  const v = impersonates(token)
+  if (!v) return null
+  return (
+    <span
+      title={`This is not the verified ${v.symbol} (${v.address}). Anyone can deploy a token under any name.`}
+      className={cn('inline-flex items-center gap-1 rounded-full border border-warn/30 bg-warn/10 px-2 py-0.5 text-[11px] font-medium text-warn', className)}
+    >
+      <TriangleAlert className="h-3 w-3" />
+      Not the verified {v.symbol}
+    </span>
+  )
 }
 
 /** Marks text an owner published about themselves: signed by them, checked by no one. */
@@ -106,8 +161,10 @@ export function ProfileLinks({ profile, className }: { profile: ProfileFields; c
   )
 }
 
-/** TokenImage that looks up the token's profile itself, for lists. */
+/** TokenImage that looks up the token's profile itself, for lists. `address` null is native QRDX. */
 export function TokenAvatar({ address, symbol, size = 32, className }: { address: string | null; symbol: string; size?: number; className?: string }) {
-  const profile = useProfile('token', address && /^0x[0-9a-fA-F]{40}$/.test(address) ? address : null)
-  return <TokenImage symbol={symbol} profile={profile} size={size} className={className} />
+  const isToken = !!address && /^0x[0-9a-fA-F]{40}$/.test(address)
+  // A verified token shows its logo, so its creator's image is never needed.
+  const profile = useProfile('token', isToken && !verifiedToken(address) ? address : null)
+  return <TokenImage symbol={symbol} profile={profile} address={isToken ? address : symbol === 'QRDX' ? 'QRDX' : null} size={size} className={className} />
 }

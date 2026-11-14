@@ -92,6 +92,11 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function BlockDetail({ block, tip, clock }: { block: ExplorerBlock; tip: number; clock: SlotClock | null }) {
   const header = block.header
+  const { spec } = useChain()
+  // Under two_block_deferral a block signs the state two blocks back (one back under deferred_execution alone).
+  const features = spec?.active_features ?? []
+  const rootLag = features.includes('two_block_deferral') ? 2 : features.includes('deferred_execution') ? 1 : 0
+  const deferredRoot = rootLag > 0 && block.height >= rootLag
   const stats = useChainStats(0)
   const finality = useFinalityOf(block)
   const nodeNow = useNodeNow(1000)
@@ -218,6 +223,12 @@ function BlockDetail({ block, tip, clock }: { block: ExplorerBlock; tip: number;
               </Row>
               <Row k="State root" wrap>
                 <Mono value={header.stateRoot} />
+                {deferredRoot && (
+                  <p className="mt-1 break-normal font-sans text-xs text-muted-foreground">
+                    Deferred execution: this is the root of the state after block {(block.height - rootLag).toLocaleString()}. The state this block leaves is signed by block{' '}
+                    {(block.height + rootLag).toLocaleString()}.
+                  </p>
+                )}
               </Row>
               <Row k="Transactions root" wrap>{ZERO_ROOT.test(header.transactionsRoot) ? <span className="text-muted-foreground">empty (no native transactions)</span> : <Mono value={header.transactionsRoot} />}</Row>
               <Row k="RANDAO reveal" wrap>

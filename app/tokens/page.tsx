@@ -8,7 +8,8 @@ import { useUsdPrices, usdOf } from '@/components/explorer/data'
 import { Panel, Pill, Tile, fmtCompact, fmtNum, fmtPct, fmtUsd, toneOf } from '@/components/explorer/ui'
 import { getCandles, getMarkets, getTokens, isNativeAsset, type NativeToken, type Ticker } from '@/lib/qrdx/indexed'
 import { inv, n18 } from '@/lib/math/decimal'
-import { TokenAvatar } from '@/components/profile/ProfileBits'
+import { ImpersonationPill, TokenAvatar, VerifiedMark } from '@/components/profile/ProfileBits'
+import { verifiedToken } from '@/lib/verified-tokens'
 import { cn } from '@/lib/utils'
 
 interface Row {
@@ -71,7 +72,8 @@ export default function TokensPage() {
   const needle = q.trim().toLowerCase()
   const shown = rows
     .filter((r) => !needle || r.token.symbol.toLowerCase().includes(needle) || r.token.name.toLowerCase().includes(needle) || r.token.token_address.includes(needle))
-    .sort((a, b) => b.trades - a.trades || b.volume - a.volume || b.token.created_height - a.token.created_height)
+    // Verified tokens lead: a copy with the same symbol must never sit above the real one.
+    .sort((a, b) => Number(!!verifiedToken(b.token.token_address)) - Number(!!verifiedToken(a.token.token_address)) || b.trades - a.trades || b.volume - a.volume || b.token.created_height - a.token.created_height)
   const traded = rows.filter((r) => r.market).length
 
   return (
@@ -126,7 +128,8 @@ export default function TokensPage() {
                         <TokenAvatar address={r.token.token_address} symbol={r.token.symbol} size={30} />
                         <span className="min-w-0">
                           <span className="block font-medium">
-                            {r.token.symbol} {!r.token.mint_authority && <Pill className="ml-1">fixed</Pill>}
+                            {r.token.symbol} <VerifiedMark address={r.token.token_address} /> {!r.token.mint_authority && <Pill className="ml-1">fixed</Pill>}
+                            <ImpersonationPill token={r.token} className="ml-1" />
                           </span>
                           <span className="block truncate text-xs text-muted-foreground">{r.token.name}</span>
                         </span>

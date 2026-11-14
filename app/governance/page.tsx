@@ -24,6 +24,10 @@ const ACTIONS: Record<string, string> = {
   system_spend: 'Treasury spend',
   freeze_master: 'Freeze master controller',
   approve_fork: 'Approve fork',
+  list_market: 'List perp market',
+  delist_market: 'Delist perp market',
+  bridge_mint_pause: 'Pause or resume bridge minting',
+  declare_quantum_emergency: 'Declare quantum emergency',
 }
 
 const STATUS_TONE: Record<string, 'primary' | 'bid' | 'ask' | 'warn' | 'muted'> = {

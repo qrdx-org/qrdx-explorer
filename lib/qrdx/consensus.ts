@@ -240,7 +240,7 @@ export interface BridgeWithdrawal {
   tx_hash: string
 }
 
-/** A deposit by id ("chain:txhash:logindex"): minted, or the attestations gathered so far. */
+/** A deposit by id ("<chain>:<lockbox deposit id>"): minted, or the attestations gathered so far. */
 export interface BridgeDeposit {
   id: string
   minted: boolean
@@ -250,3 +250,42 @@ export interface BridgeDeposit {
 export const getBridgeAssets = () => rpcCall<BridgeAsset[]>('bridge_getAssets')
 export const getBridgeDeposit = (id: string) => rpcCall<BridgeDeposit>('bridge_getDeposit', [id])
 export const getBridgeWithdrawals = (fromId = 1, limit = 100) => rpcCall<BridgeWithdrawal[]>('bridge_getWithdrawals', [fromId, limit])
+
+/** bridge_getGuardrails: the deposit window, mint limits and today's use, and whether minting is paused. */
+export interface BridgeGuardrails {
+  /** Seconds a deposit stays mintable after its source block; past it only a refund remains. */
+  deposit_window: number
+  deposit_max_future: number
+  /** Seconds a mint limit's "day" lasts. */
+  mint_period: number
+  mint_paused: boolean
+  doomsday: DoomsdayTrigger | null
+  mint_limits: Record<string, { per_day: string; cap: string }>
+  minted_by_day: Record<string, unknown>
+}
+
+/** The Doomsday Protocol's trigger (docs/QUANTUM_MIGRATION.md): when, at which block, and why. */
+export interface DoomsdayTrigger {
+  time: number
+  height: number
+  cause: string
+}
+
+/** bridge_getDoomsday: the trigger (null while it has not happened) and each chain's canary address. */
+export interface DoomsdayStatus {
+  triggered: DoomsdayTrigger | null
+  canaries: Record<string, string>
+}
+
+/** A source chain's finalized head the validators attested: what BRIDGE_PROVE_DEPOSIT proves against. */
+export interface BridgeHead {
+  chain: number
+  height: number
+  hash: string
+  state_root: string
+  timestamp: number
+}
+
+export const getBridgeGuardrails = () => rpcCall<BridgeGuardrails>('bridge_getGuardrails')
+export const getDoomsday = () => rpcCall<DoomsdayStatus>('bridge_getDoomsday')
+export const getBridgeHeads = (chain: number) => rpcCall<BridgeHead[]>('bridge_getHeads', [chain])

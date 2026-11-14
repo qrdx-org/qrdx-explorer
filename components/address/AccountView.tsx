@@ -24,7 +24,7 @@ import {
   type SpotOrder,
 } from '@/lib/qrdx/indexed'
 import { getKnownAddress } from '@/lib/known-addresses'
-import { ClaimedPill, ProfileAvatar, ProfileLinks, TokenAvatar } from '@/components/profile/ProfileBits'
+import { ClaimedPill, ProfileAvatar, ProfileLinks, TokenAvatar, VerifiedMark } from '@/components/profile/ProfileBits'
 import { ProfileButton } from '@/components/profile/ProfileButton'
 import { useProfile } from '@/lib/profiles/client'
 import { cn } from '@/lib/utils'
@@ -289,7 +289,9 @@ export function AccountView({ address }: { address: string }) {
                 <>
                   <TokenAvatar address={h.asset === 'QRDX' ? null : h.asset} symbol={sym} size={32} />
                   <span className="min-w-0 flex-1">
-                    <span className="block font-medium">{sym}</span>
+                    <span className="block font-medium">
+                      {sym} <VerifiedMark address={h.asset} />
+                    </span>
                     <span className="num block text-xs text-muted-foreground">{fmtNum(h.balance, 6)}</span>
                   </span>
                   <span className="num text-right text-sm">

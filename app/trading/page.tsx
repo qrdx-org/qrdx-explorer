@@ -1,14 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { BarChart3, Landmark, Tag, Trophy, Vault } from 'lucide-react'
+import { BarChart3, CandlestickChart, Tag, Trophy, Vault } from 'lucide-react'
 import { AddressLink } from '@/components/explorer/common'
 import { usePolled } from '@/components/explorer/hooks'
-import { Panel, Tile, fmtCompact, fmtNum } from '@/components/explorer/ui'
+import { Panel, Pill, Tile, fmtCompact, fmtNum } from '@/components/explorer/ui'
 import { getLeaderboard, getPerpMarkets, getTickerAuction, getUserVaults } from '@/lib/qrdx/trading'
 import { cn } from '@/lib/utils'
 
-type Tab = 'leaders' | 'vaults' | 'deployers' | 'tickers'
+type Tab = 'leaders' | 'vaults' | 'perps' | 'tickers'
 const WINDOWS = [
   { id: 'day', label: '24H' },
   { id: 'week', label: '7D' },
@@ -16,19 +16,19 @@ const WINDOWS = [
   { id: 'all', label: 'All' },
 ] as const
 
-const Missing = () => <p className="p-8 text-center text-sm text-muted-foreground">This network&apos;s node does not report this (qrdx-node&apos;s 2026-10 release adds it).</p>
+const Missing = () => <p className="p-8 text-center text-sm text-muted-foreground">This network&apos;s node does not report this.</p>
 
 /**
  * The exchange's trading layer from the chain: perps traders ranked by profit or volume, user
- * vaults (copy trading) and markets' liquidity vaults, deployer markets (perps a bonded
- * deployer lists and prices itself), and the unique-ticker auction.
+ * vaults (copy trading) and markets' liquidity vaults, the perpetual markets and who prices
+ * each (the validators, or a token's own spot pools), and the unique-ticker auction.
  */
 export default function TradingPage() {
   const [tab, setTab] = useState<Tab>('leaders')
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'leaders', label: 'Leaderboard', icon: <Trophy className="h-3.5 w-3.5" /> },
     { id: 'vaults', label: 'Vaults', icon: <Vault className="h-3.5 w-3.5" /> },
-    { id: 'deployers', label: 'Deployer markets', icon: <Landmark className="h-3.5 w-3.5" /> },
+    { id: 'perps', label: 'Perp markets', icon: <CandlestickChart className="h-3.5 w-3.5" /> },
     { id: 'tickers', label: 'Tickers', icon: <Tag className="h-3.5 w-3.5" /> },
   ]
   return (
@@ -37,7 +37,7 @@ export default function TradingPage() {
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
           <BarChart3 className="h-6 w-6 text-muted-foreground" /> Trading
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">Traders, vaults, deployer markets and tickers on the native exchange.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Traders, vaults, perpetual markets and tickers on the native exchange.</p>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {tabs.map((t) => (
@@ -53,7 +53,7 @@ export default function TradingPage() {
       </div>
       {tab === 'leaders' && <Leaders />}
       {tab === 'vaults' && <Vaults />}
-      {tab === 'deployers' && <Deployers />}
+      {tab === 'perps' && <PerpMarkets />}
       {tab === 'tickers' && <Tickers />}
     </div>
   )
@@ -165,49 +165,73 @@ function Vaults() {
   )
 }
 
-function Deployers() {
-  const markets = usePolled(() => getPerpMarkets(), 30_000)
-  const own = (markets.data ?? []).filter((m) => m.deployer)
-  const supported = (markets.data ?? []).some((m) => 'sz_decimals' in m)
+function PerpMarkets() {
+  const markets = usePolled(() => getPerpMarkets(), 15_000)
+  const rows = markets.data ?? []
+  const pct = (v: string | null | undefined, digits = 4) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? '—' : `${(Number(v) * 100).toFixed(digits)} %`)
   return (
-    <Panel title="Deployer markets" icon={<Landmark className="h-4 w-4" />}>
+    <Panel title="Perpetual markets" icon={<CandlestickChart className="h-4 w-4" />}>
       <p className="border-b px-4 py-2.5 text-xs text-muted-foreground">
-        Perpetual markets a deployer lists under its namespace (<span className="font-mono">dex:ASSET</span>) and prices itself, with a QRDX bond that governance can
-        slash. Isolated margin only; the validators can freeze one that misprices.
+        Markets from genesis or governance are priced by the validators&apos; oracle votes. Anyone can also list a perp on a token by funding its liquidity vault: that market is
+        priced off the token&apos;s own spot pools, takes isolated margin only, and its open interest is capped by the pools&apos; depth.
       </p>
       {markets.loading ? (
         <p className="p-8 text-center text-sm text-muted-foreground">Loading…</p>
-      ) : markets.data === null || (!supported && !own.length) ? (
+      ) : markets.data === null ? (
         <Missing />
-      ) : !own.length ? (
-        <p className="p-8 text-center text-sm text-muted-foreground">No deployer markets yet.</p>
+      ) : !rows.length ? (
+        <p className="p-8 text-center text-sm text-muted-foreground">No perpetual markets yet.</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="text-xs text-muted-foreground">
-            <tr className="text-right">
-              <th className="px-4 py-2 text-left font-medium">Market</th>
-              <th className="px-4 py-2 text-left font-medium">Deployer</th>
-              <th className="px-4 py-2 font-medium">Oracle</th>
-              <th className="px-4 py-2 font-medium">Mark</th>
-              <th className="px-4 py-2 font-medium">Open interest</th>
-              <th className="px-4 py-2 font-medium">Fee share</th>
-            </tr>
-          </thead>
-          <tbody>
-            {own.map((m) => (
-              <tr key={m.market_id} className="border-t text-right tabular-nums">
-                <td className="px-4 py-2 text-left font-medium">{m.market_id}</td>
-                <td className="px-4 py-2 text-left">
-                  <AddressLink address={m.deployer!} />
-                </td>
-                <td className="px-4 py-2">{fmtNum(m.oracle_price, 4)}</td>
-                <td className="px-4 py-2">{fmtNum(m.mark_price, 4)}</td>
-                <td className="px-4 py-2">{fmtCompact(m.open_interest)}</td>
-                <td className="px-4 py-2">{m.deployer_fee_share ? `${(Number(m.deployer_fee_share) * 100).toFixed(0)} %` : '—'}</td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-xs text-muted-foreground">
+              <tr className="text-right">
+                <th className="px-4 py-2 text-left font-medium">Market</th>
+                <th className="px-4 py-2 text-left font-medium">Priced by</th>
+                <th className="px-4 py-2 font-medium">Oracle</th>
+                <th className="px-4 py-2 font-medium">Mark</th>
+                <th className="px-4 py-2 font-medium">Funding</th>
+                <th className="px-4 py-2 font-medium">Open interest</th>
+                <th className="px-4 py-2 font-medium">Max leverage</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((m) => {
+                const spot = m.oracle_source === 'spot'
+                return (
+                  <tr key={m.market_id} className="border-t text-right tabular-nums">
+                    <td className="px-4 py-2 text-left">
+                      <span className="font-medium">
+                        {m.base}-{m.quote}
+                      </span>
+                      {m.settled_price && <Pill className="ml-2">settled</Pill>}
+                      {spot && m.token && m.token !== 'QRDX' && (
+                        <span className="block max-w-[220px] text-xs">
+                          <AddressLink address={m.token} />
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-left">
+                      {spot ? (
+                        <>
+                          <Pill tone="primary">spot pools</Pill>
+                          {m.spot_depth && <span className="ml-2 text-xs text-muted-foreground">depth {fmtCompact(m.spot_depth)}</span>}
+                        </>
+                      ) : (
+                        <Pill>validators</Pill>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">{fmtNum(m.oracle_price, 4)}</td>
+                    <td className="px-4 py-2">{fmtNum(m.mark_price, 4)}</td>
+                    <td className="px-4 py-2">{pct(m.funding_rate)}</td>
+                    <td className="px-4 py-2">{fmtCompact(m.open_interest)}</td>
+                    <td className="px-4 py-2">{m.max_leverage ? `${fmtNum(m.max_leverage, 0)}×` : '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </Panel>
   )
