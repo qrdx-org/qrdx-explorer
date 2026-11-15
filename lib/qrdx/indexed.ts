@@ -9,6 +9,7 @@
  */
 
 import { getActiveNetwork, nodeRequest } from './client'
+import { isAccountAddress } from './accounts'
 
 // ─── transaction index (PERPS_API.md §9) ───────────────────────────────────────
 
@@ -49,8 +50,35 @@ export interface HistoryQuery {
   kinds?: string | null
 }
 
+/**
+ * The node's index fills a row's target, asset and amount for the common operations only
+ * (qrdx-node qrdx/tx_index.py _exchange_summary). For the ones that act on a sub-account, a
+ * user vault or an agent, they are still in the signed params: read them from there.
+ */
+export function withParamSummary(t: IndexedTx): IndexedTx {
+  if (t.kind !== 'exchange' || (t.target && t.amount)) return t
+  const p = ((t.detail?.params ?? {}) as Record<string, unknown>) || {}
+  const s = (v: unknown) => (typeof v === 'string' || typeof v === 'number' ? String(v) : null)
+  switch (t.op) {
+    case 'SUBACCOUNT_TRANSFER':
+      return { ...t, target: t.target ?? s(p.subaccount), asset: t.asset ?? s(p.asset), amount: t.amount ?? s(p.amount) }
+    case 'VAULT_DEPOSIT':
+    case 'VAULT_WITHDRAW':
+      return { ...t, target: t.target ?? s(p.vault), amount: t.amount ?? s(p.amount ?? p.shares) }
+    case 'VAULT_CREATE':
+      return { ...t, amount: t.amount ?? s(p.amount) }
+    case 'AGENT_APPROVE':
+    case 'AGENT_REVOKE':
+      return { ...t, target: t.target ?? s(p.agent) }
+    default:
+      return t
+  }
+}
+
+const summarized = <P extends IndexedPage>(page: P): P => ({ ...page, transactions: page.transactions.map(withParamSummary) })
+
 export function getLatestTransactions(q: HistoryQuery = {}): Promise<IndexedPage> {
-  return nodeRequest<IndexedPage>('get_latest_transactions', { query: { limit: q.limit ?? 50, cursor: q.cursor, kinds: q.kinds } })
+  return nodeRequest<IndexedPage>('get_latest_transactions', { query: { limit: q.limit ?? 50, cursor: q.cursor, kinds: q.kinds } }).then(summarized)
 }
 
 /**
@@ -65,8 +93,36 @@ export async function getBlockTransactions(height: number, limit = 200): Promise
 }
 
 export function getAddressHistory(address: string, q: HistoryQuery = {}): Promise<IndexedPage & { address: string; account: string }> {
-  return nodeRequest('get_address_history', { query: { address, limit: q.limit ?? 50, cursor: q.cursor, kinds: q.kinds } })
+  return nodeRequest<IndexedPage & { address: string; account: string }>('get_address_history', {
+    query: { address, limit: q.limit ?? 50, cursor: q.cursor, kinds: q.kinds },
+  }).then(summarized)
 }
+
+/**
+ * A sub-account's transfers with its master. The node's index files SUBACCOUNT_TRANSFER under
+ * the master only (it does not treat `subaccount` as a party), so they are read from the
+ * master's history: its exchange operations, newest first, up to `pages` pages of 500.
+ */
+export async function getSubaccountTransfers(master: string, subaccount: string, pages = 4): Promise<IndexedTx[]> {
+  const sub = subaccount.toLowerCase()
+  const out: IndexedTx[] = []
+  let cursor: string | null = null
+  for (let i = 0; i < pages; i++) {
+    const page: IndexedPage = await getAddressHistory(master, { limit: 500, cursor, kinds: 'exchange' })
+    for (const t of page.transactions) {
+      const p = (t.detail?.params ?? {}) as Record<string, unknown>
+      // Its role as the sub-account sees it: funds in (to_sub) or out (from_sub).
+      if (t.op === 'SUBACCOUNT_TRANSFER' && String(p.subaccount ?? '').toLowerCase() === sub)
+        out.push({ ...t, roles: [p.direction === 'from_sub' ? 'sender' : 'to'] })
+    }
+    if (!page.next_cursor) break
+    cursor = page.next_cursor
+  }
+  return out
+}
+
+/** Params naming an account the node's index does not file the operation under. */
+const PARTY_PARAMS = ['subaccount', 'vault', 'agent', 'leader', 'controller', 'new_controller', 'guardian']
 
 export interface IndexedTxDetail extends IndexedTx {
   /** Every account the transaction touched, with its roles. */
@@ -81,7 +137,14 @@ export async function getIndexedTransaction(hash: string): Promise<IndexedTxDeta
     if (!r) return null
     // The node maps address → roles.
     const accounts = Array.isArray(r.accounts) ? r.accounts : Object.entries(r.accounts ?? {}).map(([address, roles]) => ({ address, roles }))
-    return { ...r, accounts }
+    // Its index does not count the sub-account, vault or agent an operation names as a party
+    // (qrdx-node tx_index.py ACCOUNT_PARAMS): add them from the params.
+    const params = (r.detail?.params ?? {}) as Record<string, unknown>
+    for (const key of PARTY_PARAMS) {
+      const v = params[key]
+      if (isAccountAddress(v) && !accounts.some((x) => x.address.toLowerCase() === v.toLowerCase())) accounts.push({ address: v, roles: [key] })
+    }
+    return { ...withParamSummary(r), accounts }
   } catch {
     return null
   }

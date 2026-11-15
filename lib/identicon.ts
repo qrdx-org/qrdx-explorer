@@ -19,9 +19,10 @@ export function generateIdenticon(address: string, size: number = 64): string {
     if (!ctx) return ''
     
     // Use address to seed random colors and pattern
-    // Handle both ETH (0x...) and PQ (0xPQ...) addresses
-    const hexStart = address.startsWith('0xPQ') ? 4 : 2
-    const seed = parseInt(address.slice(hexStart, hexStart + 8), 16)
+    // Seed from the hex after any letter prefix: 0xPQ, 0xPQMS (multisig), or a protocol
+    // account's tag (0xSUBA, 0xUVLT, 0xPOOL, …: lib/qrdx/accounts.ts).
+    const body = address.replace(/^0x(PQMS|PQ|SUBA|UVLT|HLPV|PROT|POOL|CLOB|PERP|VETO|BRDG|QNSA|FEES)?/i, '')
+    const seed = parseInt(body.slice(0, 8), 16) || 0
     const color = generateColor(seed)
     const bgColor = generateBackgroundColor(seed)
     

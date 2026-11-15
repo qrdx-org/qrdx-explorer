@@ -16,6 +16,7 @@ import {
 import { getAddressBalance, getTopAddresses, type TopAddress } from '@/lib/qrdx'
 import { formatAmount, formatQrdx } from '@/lib/format'
 import { getAllKnownAddresses, getKnownAddress } from '@/lib/known-addresses'
+import { ProtocolAccounts } from '@/components/address/ProtocolAccounts'
 
 interface KnownRow {
   address: string
@@ -99,7 +100,7 @@ export default function AddressesPage() {
           <h1 className="text-3xl font-bold">Addresses</h1>
           <NetworkModeBadge />
         </div>
-        <p className="text-muted-foreground mb-6">Largest holders and protocol system wallets</p>
+        <p className="text-muted-foreground mb-6">Largest holders, system wallets, and the accounts the protocol holds funds at</p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <StatCard label="Ranked Holders" icon={Users} value={rich ? rich.length : '—'} hint="Top UTXO balances reported by the node" />
@@ -122,6 +123,7 @@ export default function AddressesPage() {
         <TabsList>
           <TabsTrigger value="rich">Rich List</TabsTrigger>
           <TabsTrigger value="known">System &amp; Known Wallets</TabsTrigger>
+          <TabsTrigger value="protocol">Protocol Accounts</TabsTrigger>
         </TabsList>
 
         <TabsContent value="rich">
@@ -203,6 +205,21 @@ export default function AddressesPage() {
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="protocol">
+          <Card>
+            <CardHeader>
+              <CardTitle>Protocol Accounts</CardTitle>
+              <CardDescription>
+                Pools&apos; reserves, order books&apos; escrow, perps collateral, vaults and the protocol&apos;s escrows. No key signs for
+                any of them: only the operations that own them move their funds.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ProtocolAccounts filter={filter} />
             </CardContent>
           </Card>
         </TabsContent>

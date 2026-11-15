@@ -33,6 +33,7 @@ import {
 } from './client'
 import { ensure0x, formatUnits, isHex, strip0x } from './encoding'
 import { isQnsName, resolveName } from './qns'
+import { isMultisigAddress, protocolKind } from './accounts'
 import { decodeEvmTransaction, type DecodedEvmTx } from './evm'
 import { decodeExchangeTx } from './exchange-wire'
 import {
@@ -962,10 +963,17 @@ export async function getMempool(): Promise<MempoolSnapshot> {
 
 // ─── Addresses ──────────────────────────────────────────────────────────────────
 
-export type AddressFormat = 'pq' | 'evm' | 'legacy'
+/**
+ * pq: an ML-DSA-65 key; multisig: an m-of-n of them (0xPQMS); evm: a classic key, a contract or a
+ * token; protocol: an address the protocol holds funds at that no key signs for (a sub-account, a
+ * vault, a pool's reserves, …: lib/qrdx/accounts.ts); legacy: a UTXO address.
+ */
+export type AddressFormat = 'pq' | 'multisig' | 'evm' | 'protocol' | 'legacy'
 
 export function detectAddressFormat(value: string): AddressFormat | null {
+  if (isMultisigAddress(value)) return 'multisig'
   if (/^0xPQ[0-9a-fA-F]{64}$/.test(value)) return 'pq'
+  if (protocolKind(value)) return 'protocol'
   if (/^0x[0-9a-fA-F]{40}$/.test(value)) return 'evm'
   if (/^[QR][1-9A-HJ-NP-Za-km-z]{44}$/.test(value)) return 'legacy'
   return null

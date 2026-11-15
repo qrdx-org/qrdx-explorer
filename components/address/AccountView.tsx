@@ -31,10 +31,18 @@ import { cn } from '@/lib/utils'
 import { AccountNfts } from '@/components/nft/AccountNfts'
 import { getAuthority, namesOf, primaryName, type Authority } from '@/lib/qrdx/qns'
 import { ContractPanel } from '@/components/contract/ContractPanel'
+import { canSign, getControlled, protocolKind, type Controlled } from '@/lib/qrdx/accounts'
+import { ControlsPanel, RolePanel, roleTitle, useRoleData } from './AccountRole'
 
 const short = (a: string) => `${a.slice(0, 8)}…${a.slice(-6)}`
 
-const FORMAT: Record<string, string> = { pq: 'Post-quantum (ML-DSA-65)', evm: 'EVM account', legacy: 'Legacy UTXO' }
+const FORMAT: Record<string, string> = {
+  pq: 'Post-quantum (ML-DSA-65)',
+  multisig: 'Multisig (ML-DSA-65)',
+  evm: 'EVM account',
+  protocol: 'Protocol account · no key',
+  legacy: 'Legacy UTXO',
+}
 
 async function mapLimit<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length)
@@ -69,6 +77,10 @@ export function AccountView({ address }: { address: string }) {
   const [primary, setPrimary] = useState<string | null>(null)
   const [names, setNames] = useState<string[] | null>(null)
   const [authority, setAuthority] = useState<Authority | null>(null)
+  const [controlled, setControlled] = useState<Controlled | null>(null)
+  // Sub-accounts, vaults, pools, escrows: what the protocol account belongs to (lib/qrdx/accounts.ts).
+  const kind = protocolKind(address)
+  const role = useRoleData(address, kind, authority)
 
   useEffect(() => {
     getAddress(address).then(setSummary, (e) => setError(e instanceof Error ? e.message : 'Could not load the address'))
@@ -82,6 +94,7 @@ export function AccountView({ address }: { address: string }) {
     primaryName(address).then(setPrimary)
     namesOf(address).then(setNames)
     getAuthority(address).then(setAuthority)
+    getControlled(address).then(setControlled)
   }, [address])
 
   useEffect(() => {
@@ -107,11 +120,18 @@ export function AccountView({ address }: { address: string }) {
   const totalUsd = holdings.reduce((s, h) => s + (h.usd ?? 0), 0)
   const perpEquityUsd = perp && qrdxUsd && perp.collateral_token.toUpperCase() === 'QRDX' ? Number(perp.equity) * Number(qrdxUsd.price) : null
 
+  // A sub-account's transfers with its master are filed under the master (useRoleData): count them here too.
+  const transfers = role.transfers
+  const history = useMemo(
+    () => (transfers?.length ? [...(recent ?? []), ...transfers].sort((a, b) => b.block_height - a.block_height || b.position - a.position) : recent),
+    [recent, transfers]
+  )
+
   const activity = useMemo<Bar[]>(() => {
     const days = 30
     const now = Math.floor(Date.now() / 1000 / 86400)
     const buckets = Array.from({ length: days }, (_, i) => ({ day: now - days + 1 + i, ex: 0, tr: 0, evm: 0 }))
-    for (const t of recent ?? []) {
+    for (const t of history ?? []) {
       if (t.op === 'ORACLE_VOTE') continue
       const b = buckets.find((x) => x.day === Math.floor(t.timestamp / 86400))
       if (!b) continue
@@ -128,19 +148,41 @@ export function AccountView({ address }: { address: string }) {
       ],
       tooltip: `${new Date(b.day * 86400000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}: ${b.ex} exchange · ${b.tr} transfers · ${b.evm} EVM`,
     }))
-  }, [recent])
+  }, [history])
 
-  const load = useCallback((q: { limit: number; cursor: string | null; kinds: string | null }) => getAddressHistory(address, q), [address])
+  const load = useCallback(
+    async (q: { limit: number; cursor: string | null; kinds: string | null }) => {
+      const page = await getAddressHistory(address, q)
+      // The first page also shows a sub-account's transfers with its master (newest first).
+      if (q.cursor || !transfers?.length || (q.kinds && !q.kinds.split(',').includes('exchange'))) return page
+      const merged = [...page.transactions, ...transfers].sort((a, b) => b.block_height - a.block_height || b.position - a.position)
+      return { ...page, transactions: merged }
+    },
+    [address, transfers]
+  )
 
   if (error && !summary) return <p className="py-16 text-center text-sm text-ask">{error}</p>
   const validator = summary?.validator
-  const nonVote = (recent ?? []).filter((t) => t.op !== 'ORACLE_VOTE')
+  const nonVote = (history ?? []).filter((t) => t.op !== 'ORACLE_VOTE')
   const first = nonVote[nonVote.length - 1]
   const last = nonVote[0]
   const positions = Object.entries(perp?.positions ?? {}).filter(([, p]) => Number(p.size) !== 0)
   // Curated names win over what an owner says about themselves.
   const claimed = known ? null : profile?.profile ?? null
-  const title = known?.name ?? claimed?.name ?? (validator ? 'Validator' : summary?.isContract ? 'Contract' : 'Account')
+  const title =
+    known?.name ??
+    claimed?.name ??
+    (kind
+      ? roleTitle(kind, role, (a) => assetSymbol(a, tokens))
+      : authority?.multisig
+        ? 'Multisig'
+        : validator
+          ? 'Validator'
+          : summary?.isContract
+            ? 'Contract'
+            : 'Account')
+  const formatLabel =
+    kind?.tag === 'SUBA' ? 'Sub-account · signed for by its master' : kind?.tag === 'UVLT' ? (role.vault?.managed ? 'Liquidity vault · quoted by the protocol' : 'Vault · traded by its leader') : summary?.format ? FORMAT[summary.format] : null
 
   return (
     <div className="space-y-6">
@@ -156,7 +198,7 @@ export function AccountView({ address }: { address: string }) {
                   <Pill tone="primary">{primary}</Pill>
                 </span>
               )}
-              {summary?.format && <Pill>{FORMAT[summary.format]}</Pill>}
+              {formatLabel && <Pill>{formatLabel}</Pill>}
               {validator && <Pill tone={validator.status === 'active' ? 'bid' : 'warn'}>{validator.status} validator</Pill>}
               {summary?.isContract && <Pill tone="primary">Contract</Pill>}
             </div>
@@ -166,7 +208,8 @@ export function AccountView({ address }: { address: string }) {
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <ProfileButton kind="account" subject={address} signer={address} label="this address" profile={known ? null : profile} />
+            {/* A profile is signed by the address itself: protocol accounts have no key. */}
+            {canSign(address) && <ProfileButton kind="account" subject={address} signer={address} label="this address" profile={known ? null : profile} />}
             <ShareAddressDialog address={address} />
           </div>
         </div>
@@ -192,7 +235,7 @@ export function AccountView({ address }: { address: string }) {
           <Tile
             label="Activity"
             icon={<Activity className="h-4 w-4" />}
-            value={recent ? `${nonVote.length >= 500 ? '500+' : nonVote.length}` : '—'}
+            value={history ? `${nonVote.length >= 500 ? '500+' : nonVote.length}` : '—'}
             sub={last ? `last ${new Date(last.timestamp * 1000).toLocaleDateString()}` : 'transactions'}
           />
           {validator ? (
@@ -216,7 +259,7 @@ export function AccountView({ address }: { address: string }) {
             <Legend className="bg-[hsl(var(--chart-3))]" label="Transfers" />
           </span>
         }>
-          {recent === null ? <p className="py-12 text-center text-sm text-muted-foreground">Loading…</p> : <Bars bars={activity} height={150} unit="transactions a day" />}
+          {history === null ? <p className="py-12 text-center text-sm text-muted-foreground">Loading…</p> : <Bars bars={activity} height={150} unit="transactions a day" />}
         </Panel>
         <Panel title="Overview" icon={<Layers className="h-4 w-4" />}>
           <Row k="First seen">{first ? new Date(first.timestamp * 1000).toLocaleString() : '—'}</Row>
@@ -265,6 +308,27 @@ export function AccountView({ address }: { address: string }) {
           )}
         </Panel>
       </div>
+
+      {(() => {
+        const rolePanel = <RolePanel address={address} kind={kind} authority={authority} data={role} />
+        const hasRole = !!kind || !!authority?.multisig
+        const hasControls =
+          !!controlled &&
+          (controlled.subaccounts.length > 0 ||
+            controlled.vaults_led.length > 0 ||
+            controlled.controls.length > 0 ||
+            controlled.agent_for.length > 0 ||
+            controlled.multisigs.length > 0 ||
+            controlled.guardian_of.length > 0 ||
+            (authority?.agents.length ?? 0) > 0)
+        if (!hasRole && !hasControls) return null
+        return (
+          <div className={cn('grid gap-6', hasRole && hasControls && 'lg:grid-cols-2')}>
+            {hasRole && rolePanel}
+            {hasControls && <ControlsPanel address={address} controlled={controlled} authority={authority} />}
+          </div>
+        )
+      })()}
 
       {holdings.length > 0 && (
         <Panel title="Holdings" icon={<Coins className="h-4 w-4" />} bodyClassName="p-4">

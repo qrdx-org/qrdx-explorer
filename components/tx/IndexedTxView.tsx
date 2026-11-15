@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { isAccountAddress } from '@/lib/qrdx/accounts'
 import Link from 'next/link'
 import { CheckCircle2, ChevronLeft, FileText, ListChecks, Users, XCircle } from 'lucide-react'
 import { AddressLink, BlockLink, CopyButton } from '@/components/explorer/common'
@@ -22,7 +23,7 @@ interface Receipt {
   data?: Record<string, unknown>
 }
 
-const isAccount = (v: unknown) => typeof v === 'string' && (/^0xPQ[0-9a-fA-F]{64}$/.test(v) || /^0x[0-9a-fA-F]{40}$/.test(v))
+const isAccount = isAccountAddress
 
 /** An exchange operation: what it did (index), how it executed (receipt), and who it touched. */
 export function IndexedTxView({ tx }: { tx: IndexedTxDetail }) {

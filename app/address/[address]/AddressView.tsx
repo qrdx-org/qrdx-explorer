@@ -34,7 +34,7 @@ export function AddressView({ address }: { address: string }) {
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
       {!format ? (
-        <ErrorState title="Invalid address" error={`"${address}" is not a QRDX address. Supported: 0xPQ… (post-quantum), 0x… (EVM or token), Q…/R… (legacy).`} />
+        <ErrorState title="Invalid address" error={`"${address}" is not a QRDX address. Supported: 0xPQ… (post-quantum), 0xPQMS… (multisig), 0x… (EVM, contract or token), protocol accounts such as 0xSUBA… (sub-account), 0xUVLT… (vault) or 0xPOOL… (pool reserves), and Q…/R… (legacy).`} />
       ) : token === undefined || (!token && collection === undefined) ? (
         <p className="flex items-center justify-center gap-2 py-24 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading address…

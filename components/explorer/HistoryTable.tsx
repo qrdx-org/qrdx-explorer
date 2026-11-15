@@ -8,6 +8,7 @@ import { useTokenMap } from './data'
 import { Tabs } from './ui'
 import { assetSymbol, isOracleVote, type IndexedPage, type IndexedTx } from '@/lib/qrdx/indexed'
 import { cn } from '@/lib/utils'
+import { isAccountAddress } from '@/lib/qrdx/accounts'
 import { downloadText, toCsv } from '@/lib/csv'
 
 const OP_LABELS: Record<string, string> = {
@@ -273,7 +274,7 @@ export function HistoryTable({
                                 .map((a) => (a.toUpperCase() === 'QRDX' ? 'QRDX' : tokens.get(a.toLowerCase())?.symbol ?? `${a.slice(0, 8)}…`))
                                 .join(' / ')}
                             </span>
-                          ) : /^0x[0-9a-fA-F]{40}$|^0xPQ/.test(t.target) ? (
+                          ) : isAccountAddress(t.target) ? (
                             <AddressLink address={t.target} className="min-w-0" />
                           ) : (
                             <span className="truncate font-mono text-xs text-muted-foreground">{t.target}</span>

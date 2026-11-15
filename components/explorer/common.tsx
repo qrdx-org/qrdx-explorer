@@ -9,6 +9,7 @@ import { ProfileAvatar } from '@/components/profile/ProfileBits'
 import { useProfile } from '@/lib/profiles/client'
 import { formatAddress, formatHash, timeAgo } from '@/lib/format'
 import { getKnownAddress } from '@/lib/known-addresses'
+import { protocolKind } from '@/lib/qrdx/accounts'
 import type { ExplorerTransaction } from '@/lib/qrdx'
 import { useChain, useNow } from './ChainProvider'
 
@@ -52,13 +53,14 @@ export function AddressLink({
   if (!address) return <span className="text-muted-foreground">—</span>
   const known = getKnownAddress(address)
   const claimed = !known && !full ? profile?.profile.name : undefined
+  const kind = protocolKind(address)
   return (
     <span className={`inline-flex items-center gap-2 min-w-0 ${className}`}>
       {avatar && <ProfileAvatar address={address} profile={known ? null : profile} size={20} fallbackImage={known?.image} />}
       <Link
         href={`/address/${address}`}
         className={`${claimed ? 'font-medium' : 'font-mono'} text-sm text-primary hover:underline truncate`}
-        title={claimed ? `${claimed} (name claimed by the owner)\n${address}` : address}
+        title={claimed ? `${claimed} (name claimed by the owner)\n${address}` : kind ? `${kind.label}\n${address}` : address}
       >
         {known ? known.name : claimed ?? (full ? address : formatAddress(address, 8, 6))}
       </Link>
