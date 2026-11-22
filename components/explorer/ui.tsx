@@ -89,7 +89,7 @@ export function TokenMark({ symbol, size = 36, className }: { symbol: string; si
     <span
       aria-hidden
       className={cn('inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white', className)}
-      style={{ width: size, height: size, fontSize: size * 0.32, background: symbol === 'QRDX' ? 'linear-gradient(135deg,#3b82f6,#1e3a8a)' : `hsl(${h} 55% 45%)` }}
+      style={{ width: size, height: size, fontSize: size * 0.32, background: symbol === 'QRDX' ? 'linear-gradient(135deg,#42dcff,#007fad)' : `hsl(${h} 55% 45%)` }}
     >
       {symbol.replace(/^[qw](?=[A-Z])/, '').slice(0, 3).toUpperCase()}
     </span>

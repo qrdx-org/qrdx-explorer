@@ -1,6 +1,6 @@
 # QRDX Explorer
 
-The block explorer for the QRDX chain: blocks, transactions, accounts, validators, and the chain's native tokens and markets, read live from a QRDX node. Next.js 16, React 19, Tailwind CSS v4, lightweight-charts. Themed like [QRDX Trade](https://trade.qrdx.org): QRDX navy and blue in dark mode, black and white in light mode.
+The block explorer for the QRDX chain: blocks, transactions, accounts, validators, and the chain's native tokens and markets, read live from a QRDX node. Next.js 16, React 19, Tailwind CSS v4, lightweight-charts. Themed like [QRDX Trade](https://trade.qrdx.org) and qrdx.org: ink with Cherenkov blue in dark mode, ink on paper in light mode.
 
 ## What it shows
 

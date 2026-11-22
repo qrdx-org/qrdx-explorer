@@ -128,7 +128,7 @@ export function NetworkModeBadge({ size = 'sm' }: { size?: 'sm' | 'md' }) {
     return <div className={`${sizing} rounded-full bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30`}>Testnet</div>
   }
   if (network.type === 'local') {
-    return <div className={`${sizing} rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-400 border border-blue-500/30`}>Local Node</div>
+    return <div className={`${sizing} rounded-full bg-signal/15 text-signal border border-signal/30`}>Local Node</div>
   }
   return null
 }

@@ -1,4 +1,4 @@
-import { Inter, JetBrains_Mono } from 'next/font/google'
+import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import Navigation from '@/components/Navigation'
@@ -9,8 +9,8 @@ import { ChainProvider } from '@/components/explorer/ChainProvider'
 import { WalletProvider } from '@/lib/wallet/WalletContext'
 import type { Metadata } from 'next'
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
-const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains' })
+const sans = Geist({ subsets: ['latin'], variable: '--font-geist' })
+const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
 
 export const metadata: Metadata = {
   title: 'QRDX Explorer - Quantum Resistant Blockchain Explorer',
@@ -65,7 +65,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: ASSET_RECOVERY }} />
       </head>
-      <body className={`${inter.className} ${inter.variable} ${mono.variable}`}>
+      <body className={`${sans.className} ${sans.variable} ${mono.variable}`}>
         <StaleBuildGuard />
         <ThemeProvider
           attribute="class"
