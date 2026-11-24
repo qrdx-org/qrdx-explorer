@@ -12,6 +12,7 @@ import { useTokenMap, useUsdPrices, usdOf } from '@/components/explorer/data'
 import { opLabel } from '@/components/explorer/HistoryTable'
 import { useChainStats, useLiveBlocks } from '@/components/explorer/hooks'
 import { LatestBlocksList } from '@/components/explorer/live-blocks'
+import { ChainTape } from '@/components/explorer/ChainTape'
 import { Panel, Pill, Tile, fmtCompact, fmtNum, fmtPct, fmtUsd, toneOf } from '@/components/explorer/ui'
 import { getValidators } from '@/lib/qrdx'
 import { epochMs, getStakingValidators, type StakingValidator } from '@/lib/qrdx/consensus'
@@ -85,24 +86,35 @@ export default function HomePage() {
   return (
     <div>
       <section className="hero-glow border-b">
-        <div className="mx-auto max-w-7xl px-4 pb-10 pt-12">
-          <div className="mx-auto max-w-3xl text-center">
-            <p className="flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              <span className={cn('h-1.5 w-1.5 rounded-full', stream.state === 'live' ? 'pulse-dot bg-bid text-bid' : 'bg-muted-foreground')} />
-              {network.name}
-            </p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">The QRDX chain, live</h1>
-            <p className="mt-3 text-base text-muted-foreground">
-              {clock ? `A slot every ${formatMs(clock.slotMs)}. ` : ''}Blocks, transactions, tokens and markets, read from the node as they happen.
-            </p>
+        <div className="mx-auto max-w-7xl px-4 pb-10 pt-12 sm:pt-16">
+          <div className="grid items-end gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
+            <div className="rise-in">
+              <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                <span className={cn('h-1.5 w-1.5 rounded-full', stream.state === 'live' ? 'pulse-dot bg-bid text-bid' : 'bg-muted-foreground')} />
+                {network.name}
+              </p>
+              <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">The QRDX chain, live</h1>
+              <p className="mt-3 max-w-xl text-base text-muted-foreground">
+                {clock ? `A slot every ${formatMs(clock.slotMs)}. ` : ''}Blocks, transactions, tokens and markets, read from the node as they happen.
+              </p>
+            </div>
             <button
               onClick={openSearch}
-              className="mx-auto mt-7 flex h-12 w-full max-w-2xl items-center gap-3 rounded-xl border bg-card px-4 text-left text-muted-foreground shadow-sm transition-colors hover:border-foreground/25"
+              className="rise-in flex h-12 w-full items-center gap-3 rounded-xl border bg-card px-4 text-left text-muted-foreground shadow-sm transition-colors [--d:120ms] hover:border-foreground/25"
             >
               <Search className="h-4 w-4" />
               <span className="flex-1 text-sm">Search a block, transaction, address or token</span>
               <kbd className="rounded border bg-muted px-1.5 text-[11px]">⌘K</kbd>
             </button>
+          </div>
+          <div className="rise-in mt-10 [--d:200ms]">
+            <ChainTape className="h-[112px]" />
+            <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10.5px] text-muted-foreground">
+              <span>● a block, taller with more transactions</span>
+              <span>○ a slot with no block</span>
+              <span>━ finalized · ┅ waiting for finality</span>
+              <span>click a block to open it</span>
+            </p>
           </div>
           <div className="mt-10 grid grid-cols-2 gap-3 md:grid-cols-4">
             <Tile

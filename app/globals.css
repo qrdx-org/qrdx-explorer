@@ -149,6 +149,16 @@
   -webkit-backdrop-filter: blur(10px) saturate(140%);
 }
 
+/* Arrivals: the hero's parts rise out of a blur, in turn (--d: the delay). */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+.rise-in {
+  animation: rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+
 @keyframes pulse-dot {
   0% { box-shadow: 0 0 0 0 currentColor; }
   70% { box-shadow: 0 0 0 5px transparent; }
@@ -163,7 +173,7 @@
 .flash-in { animation: flash-in 1.2s ease-out; }
 
 @media (prefers-reduced-motion: reduce) {
-  .pulse-dot, .flash-in { animation: none; }
+  .pulse-dot, .flash-in, .rise-in { animation: none; }
 }
 
 /* Older pages still use these. */
