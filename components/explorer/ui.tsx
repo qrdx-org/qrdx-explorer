@@ -81,15 +81,17 @@ export function Row({ k, children, wrap = false }: { k: string; children: React.
   )
 }
 
-/** A token's initials disc (native tokens have no logo registry on chain). */
+/** A token's initials disc (native tokens have no logo registry on chain), in ink: QRDX solid, others a tint. */
 export function TokenMark({ symbol, size = 36, className }: { symbol: string; size?: number; className?: string }) {
-  let h = 0
-  for (const c of symbol) h = (h * 31 + c.charCodeAt(0)) % 360
   return (
     <span
       aria-hidden
-      className={cn('inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white', className)}
-      style={{ width: size, height: size, fontSize: size * 0.32, background: symbol === 'QRDX' ? 'linear-gradient(135deg,#42dcff,#007fad)' : `hsl(${h} 55% 45%)` }}
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded-full font-semibold',
+        symbol === 'QRDX' ? 'bg-foreground text-background' : 'bg-foreground/10 text-foreground',
+        className
+      )}
+      style={{ width: size, height: size, fontSize: size * 0.32 }}
     >
       {symbol.replace(/^[qw](?=[A-Z])/, '').slice(0, 3).toUpperCase()}
     </span>

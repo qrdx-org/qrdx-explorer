@@ -45,8 +45,8 @@ export function ProfileAvatar({
 }
 
 /**
- * A token's image: its logo when QRDX verified it (or it is native QRDX), else the image
- * its creator published, else its lettered mark. Pass `address` for the verified lookup.
+ * A token's image: its logo when QRDX verified it (or it is native QRDX), in greyscale like
+ * the rest of the site, else the image its creator published, else its lettered mark. Pass `address` for the verified lookup.
  */
 export function TokenImage({
   symbol,
@@ -73,7 +73,7 @@ export function TokenImage({
         alt=""
         referrerPolicy="no-referrer"
         onError={() => setBroken(src)}
-        className={cn('shrink-0 rounded-full bg-muted object-cover', className)}
+        className={cn('shrink-0 rounded-full bg-muted object-cover', logo && 'logo-mono', className)}
         style={{ width: size, height: size }}
       />
     )

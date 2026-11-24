@@ -59,14 +59,14 @@ export function generateIdenticon(address: string, size: number = 64): string {
   }
 }
 
+// Monochrome, like the rest of the site: the pattern tells addresses apart, and its grey (one
+// of several, from the seed) on a near-black ground helps.
 function generateColor(seed: number): string {
-  const hue = seed % 360
-  return `hsl(${hue}, 70%, 60%)`
+  return `hsl(0, 0%, ${58 + ((seed >>> 16) % 5) * 9}%)`
 }
 
 function generateBackgroundColor(seed: number): string {
-  const hue = (seed + 180) % 360
-  return `hsl(${hue}, 30%, 20%)`
+  return `hsl(0, 0%, ${10 + ((seed >>> 20) % 3) * 4}%)`
 }
 
 /**
